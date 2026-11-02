@@ -34,11 +34,18 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
 
   // Property aerial photo (Rosebush MI uploaded map or location propertyMapUrl)
-  const propertyAerialPhoto =
+  const rawAerialPhoto =
     location?.propertyMapUrl ||
     (location?.name?.toLowerCase().includes('rosebush')
-      ? '/assets/aistudio/RosebushHunt_229e051e.png'
+      ? './assets/aistudio/RosebushHunt_229e051e.png'
       : undefined);
+
+  // Normalize path so it resolves relatively on GitHub Pages subpaths or root domains
+  const propertyAerialPhoto = rawAerialPhoto
+    ? rawAerialPhoto.startsWith('http')
+      ? rawAerialPhoto
+      : `${import.meta.env.BASE_URL || './'}${rawAerialPhoto.replace(/^(\.\/|\/)/, '')}`
+    : undefined;
 
   const hasAerialMap = Boolean(propertyAerialPhoto);
 

@@ -124,9 +124,37 @@ export default function App() {
     async function fetchWeather() {
       setIsLoadingWeather(true);
       try {
-        const res = await fetch(`/api/weather?lat=${currentLocation.lat}&lon=${currentLocation.lon}`);
-        if (!res.ok) throw new Error(`Weather error status: ${res.status}`);
-        const data = await res.json();
+        let data: any = null;
+
+        // Try backend proxy first
+        try {
+          const res = await fetch(`/api/weather?lat=${currentLocation.lat}&lon=${currentLocation.lon}`);
+          if (res.ok) {
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+              data = await res.json();
+            }
+          }
+        } catch {
+          // Backend proxy unavailable (e.g. static export on GitHub Pages)
+        }
+
+        // Direct client fallback to Open-Meteo for GitHub Pages static deployments
+        if (!data || !data.current) {
+          try {
+            const directUrl = `https://api.open-meteo.com/v1/forecast?latitude=${currentLocation.lat}&longitude=${currentLocation.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover&hourly=surface_pressure&daily=sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
+            const directRes = await fetch(directUrl);
+            if (directRes.ok) {
+              data = await directRes.json();
+            }
+          } catch (directErr) {
+            console.warn('Direct Open-Meteo fetch fallback error:', directErr);
+          }
+        }
+
+        if (!data || !data.current) {
+          throw new Error('Unable to retrieve weather data from proxy or direct source.');
+        }
 
         if (isCancelled) return;
 

@@ -61,7 +61,7 @@ export const DEFAULT_LOCATIONS: SavedLocation[] = [
     lon: -84.7670,
     acreage: 'Feinaur Family Parcel • Isabella County',
     terrain: 'Chippewa River Basin, Hardwood Timber & Ag Fields',
-    propertyMapUrl: '/assets/aistudio/RosebushHunt_229e051e.png',
+    propertyMapUrl: './assets/aistudio/RosebushHunt_229e051e.png',
     description:
       'Private Rosebush, MI hunting tract along the Chippewa River corridor. Features mature hardwood timber, dense river bottom funnels, interior trail camera networks, and agricultural field transitions.',
     standSpots: [
