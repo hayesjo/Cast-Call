@@ -1,0 +1,459 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Mode,
+  SavedLocation,
+  WeatherData,
+  CatchReport,
+  BassForecast,
+} from './types';
+import { DEFAULT_LOCATIONS } from './data/defaultLocations';
+import { INITIAL_CATCH_REPORTS } from './data/sampleCatches';
+import { calculateSolunar } from './utils/solunar';
+import { calculateRutForecast } from './utils/rutCalculator';
+import { calculateBassForecast } from './utils/bassTactics';
+import { Header } from './components/Header';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { FishingForecastView } from './components/FishingForecastView';
+import { HuntingForecastView } from './components/HuntingForecastView';
+import { InteractiveLakeMap } from './components/InteractiveLakeMap';
+import { WindScentCompass } from './components/WindScentCompass';
+import { AITacticalAdvisor } from './components/AITacticalAdvisor';
+import { CatchLogView } from './components/CatchLogView';
+import { LocationSearchModal } from './components/LocationSearchModal';
+import { Loader2, AlertCircle } from 'lucide-react';
+
+export default function App() {
+  // Mode: Fishing vs Hunting
+  const [mode, setMode] = useState<Mode>('fishing');
+
+  // Locations state: ensure default locations (including LeRoy MI, Rosebush MI, Tustin MI) are always loaded and prioritized
+  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(() => {
+    try {
+      const stored = localStorage.getItem('apexcast_saved_locations');
+      if (stored) {
+        const parsed: SavedLocation[] = JSON.parse(stored);
+        // Retain any user-created custom locations, while ensuring all canonical DEFAULT_LOCATIONS are fresh
+        const userCustomLocations = parsed.filter(
+          (p) => p.isCustom && !DEFAULT_LOCATIONS.some((def) => def.name.toLowerCase() === p.name.toLowerCase())
+        );
+        return [...DEFAULT_LOCATIONS, ...userCustomLocations];
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return DEFAULT_LOCATIONS;
+  });
+
+  const [currentLocation, setCurrentLocation] = useState<SavedLocation>(() => {
+    // Default to Lake Mitchell (Cadillac) for fishing or LeRoy MI for hunting
+    const defaultLake = DEFAULT_LOCATIONS.find((l) => l.name.includes('Mitchell'));
+    return defaultLake || DEFAULT_LOCATIONS[0] || savedLocations[0];
+  });
+
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'forecast' | 'hotspots' | 'advisor' | 'logs'>('forecast');
+
+  // Catch & Harvest Reports
+  const [catchReports, setCatchReports] = useState<CatchReport[]>(() => {
+    try {
+      const stored = localStorage.getItem('apexcast_catches');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+    return INITIAL_CATCH_REPORTS;
+  });
+
+  // User-calibrated Bass parameters
+  const [bassTuning, setBassTuning] = useState<{
+    waterTemp: number;
+    waterClarity: 'crystal_clear' | 'stained' | 'muddy';
+    lightCondition: 'bright_sun' | 'partly_cloudy' | 'overcast' | 'low_light';
+    forageActive: 'threadfin_shad' | 'bluegill' | 'crawfish' | 'perch';
+  }>({
+    waterTemp: 66,
+    waterClarity: currentLocation.waterClarityDefault || 'stained',
+    lightCondition: 'partly_cloudy',
+    forageActive: 'threadfin_shad',
+  });
+
+  // Weather state
+  const [weather, setWeather] = useState<WeatherData>({
+    temp: 64,
+    feelsLike: 63,
+    humidity: 58,
+    pressure: 29.88,
+    pressureTrend: 'falling',
+    pressureTrendText: 'Falling - Pre-Front Trigger',
+    windSpeed: 11,
+    windGusts: 16,
+    windDirection: 315,
+    windCardinal: 'NW',
+    cloudCover: 65,
+    weatherCode: 3,
+    conditionName: 'Overcast / Wind Chop',
+    sunrise: '7:08 AM',
+    sunset: '6:35 PM',
+    hourlyTemps: [],
+  });
+
+  const [isLoadingWeather, setIsLoadingWeather] = useState(false);
+
+  // Sync saved locations to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('apexcast_saved_locations', JSON.stringify(savedLocations));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [savedLocations]);
+
+  // Sync catch reports to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('apexcast_catches', JSON.stringify(catchReports));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [catchReports]);
+
+  // Fetch live weather whenever current location changes
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function fetchWeather() {
+      setIsLoadingWeather(true);
+      try {
+        const res = await fetch(`/api/weather?lat=${currentLocation.lat}&lon=${currentLocation.lon}`);
+        if (!res.ok) throw new Error(`Weather error status: ${res.status}`);
+        const data = await res.json();
+
+        if (isCancelled) return;
+
+        const current = data.current || {};
+        const hourly = data.hourly || {};
+        const daily = data.daily || {};
+
+        // Convert hPa to inHg: 1 hPa = 0.02953 inHg
+        const rawPressureHpa = current.surface_pressure || 1012;
+        const currentPressureInHg = rawPressureHpa * 0.02953;
+
+        // Calculate pressure trend from hourly data (compare current with 4 hours ago)
+        let trend: 'rapidly_falling' | 'falling' | 'steady' | 'rising' | 'rapidly_rising' = 'steady';
+        let trendText = 'Steady Barometer';
+
+        if (hourly.surface_pressure && hourly.surface_pressure.length > 4) {
+          const pastHpa = hourly.surface_pressure[0];
+          const diffInHg = (rawPressureHpa - pastHpa) * 0.02953;
+          if (diffInHg < -0.06) {
+            trend = 'rapidly_falling';
+            trendText = 'Rapidly Falling (Cold Front)';
+          } else if (diffInHg < -0.02) {
+            trend = 'falling';
+            trendText = 'Falling (Active Feed)';
+          } else if (diffInHg > 0.06) {
+            trend = 'rapidly_rising';
+            trendText = 'Rapidly Rising (Post-Front)';
+          } else if (diffInHg > 0.02) {
+            trend = 'rising';
+            trendText = 'Rising (Stabilizing)';
+          }
+        }
+
+        // Convert degrees to cardinal
+        const deg = current.wind_direction_10m || 0;
+        const cardinals = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        const cardinal = cardinals[Math.round(deg / 45) % 8];
+
+        // Format sunrise / sunset times
+        const formatTime = (iso?: string) => {
+          if (!iso) return '6:45 AM';
+          const d = new Date(iso);
+          return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        };
+
+        const sunrise = daily.sunrise?.[0] ? formatTime(daily.sunrise[0]) : '7:04 AM';
+        const sunset = daily.sunset?.[0] ? formatTime(daily.sunset[0]) : '6:30 PM';
+
+        // Weather condition name mapping
+        const code = current.weather_code || 0;
+        let condName = 'Clear Skies';
+        if (code >= 1 && code <= 3) condName = code === 3 ? 'Overcast' : 'Partly Cloudy';
+        else if (code >= 45 && code <= 48) condName = 'Foggy / Low Visibility';
+        else if (code >= 51 && code <= 67) condName = 'Rain / Drizzle';
+        else if (code >= 71 && code <= 77) condName = 'Snow Flurries';
+        else if (code >= 80 && code <= 82) condName = 'Rain Showers';
+        else if (code >= 95) condName = 'Thunderstorms';
+
+        const updatedWeather: WeatherData = {
+          temp: Math.round(current.temperature_2m ?? 65),
+          feelsLike: Math.round(current.apparent_temperature ?? 63),
+          humidity: Math.round(current.relative_humidity_2m ?? 60),
+          pressure: parseFloat(currentPressureInHg.toFixed(2)),
+          pressureTrend: trend,
+          pressureTrendText: trendText,
+          windSpeed: Math.round(current.wind_speed_10m ?? 8),
+          windGusts: Math.round(current.wind_gusts_10m ?? 12),
+          windDirection: deg,
+          windCardinal: cardinal,
+          cloudCover: Math.round(current.cloud_cover ?? 50),
+          weatherCode: code,
+          conditionName: condName,
+          sunrise,
+          sunset,
+          hourlyTemps: [],
+        };
+
+        setWeather(updatedWeather);
+
+        // Adjust estimated water temp based on air temp and month if user hasn't explicitly customized
+        const month = new Date().getMonth();
+        let estimatedWater = Math.max(45, Math.min(84, Math.round(updatedWeather.temp * 0.85 + 8)));
+        if (month >= 5 && month <= 8) estimatedWater = Math.max(72, estimatedWater); // Summer
+        if (month === 11 || month === 0 || month === 1) estimatedWater = Math.min(54, estimatedWater); // Winter
+
+        setBassTuning((prev) => ({
+          ...prev,
+          waterTemp: estimatedWater,
+          waterClarity: currentLocation.waterClarityDefault || prev.waterClarity,
+        }));
+      } catch (err) {
+        console.warn('Weather fetch failed, utilizing cached atmospheric snapshot:', err);
+      } finally {
+        if (!isCancelled) setIsLoadingWeather(false);
+      }
+    }
+
+    fetchWeather();
+    return () => {
+      isCancelled = true;
+    };
+  }, [currentLocation]);
+
+  // Solunar calculations
+  const solunar = useMemo(() => {
+    return calculateSolunar(new Date(), weather.sunrise, weather.sunset);
+  }, [weather.sunrise, weather.sunset]);
+
+  // Rut calculations for hunting
+  const rut = useMemo(() => {
+    return calculateRutForecast(new Date(), currentLocation.lat);
+  }, [currentLocation.lat]);
+
+  // Bass forecast calculations
+  const bassForecast = useMemo<BassForecast>(() => {
+    return calculateBassForecast({
+      waterTemp: bassTuning.waterTemp,
+      pressureTrend: weather.pressureTrend,
+      pressureValue: weather.pressure,
+      waterClarity: bassTuning.waterClarity,
+      lightCondition: bassTuning.lightCondition,
+      forageActive: bassTuning.forageActive,
+      windSpeed: weather.windSpeed,
+      windCardinal: weather.windCardinal,
+      windDirection: weather.windDirection,
+      seasonMonth: new Date().getMonth(),
+    });
+  }, [bassTuning, weather]);
+
+  // Composite hunting score
+  const huntingCompositeScore = useMemo(() => {
+    let score = rut.rutActivityScore * 0.45 + solunar.overallSolunarScore * 0.35;
+    if (weather.pressureTrend === 'falling' || weather.pressureTrend === 'rapidly_falling') {
+      score += 15;
+    } else if (weather.pressureTrend === 'rising') {
+      score += 5;
+    }
+    if (weather.temp >= 30 && weather.temp <= 50) score += 5;
+    return Math.max(40, Math.min(99, Math.round(score)));
+  }, [rut, solunar, weather]);
+
+  // Active composite score based on current mode
+  const activeScore = mode === 'fishing' ? bassForecast.compositeBiteScore : huntingCompositeScore;
+
+  // Handle adding new location from search or manual form
+  const handleAddLocation = (newLoc: SavedLocation) => {
+    setSavedLocations((prev) => [newLoc, ...prev.filter((l) => l.name !== newLoc.name)]);
+    setCurrentLocation(newLoc);
+    if (newLoc.type === 'hunting_unit') setMode('hunting');
+    if (newLoc.type === 'lake') setMode('fishing');
+  };
+
+  // Handle adding new catch report
+  const handleAddReport = (newRep: CatchReport) => {
+    setCatchReports((prev) => [newRep, ...prev]);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0b120f] text-stone-100 flex flex-col selection:bg-emerald-500 selection:text-white">
+      {/* Top Header */}
+      <Header
+        mode={mode}
+        onModeChange={(newMode) => {
+          setMode(newMode);
+          // If switching to hunting and current location is a lake, switch to LeRoy, Rosebush, or Tustin
+          if (newMode === 'hunting' && currentLocation.type === 'lake') {
+            const huntingUnit = savedLocations.find(
+              (l) => l.name === 'LeRoy' || l.name === 'Rosebush' || l.name === 'Tustin'
+            ) || savedLocations.find((l) => l.type === 'hunting_unit');
+            if (huntingUnit) setCurrentLocation(huntingUnit);
+          }
+          // If switching to fishing and current location is hunting unit, switch to Lake Mitchell (Cadillac)
+          if (newMode === 'fishing' && currentLocation.type === 'hunting_unit') {
+            const lakeUnit = savedLocations.find(
+              (l) => l.name.includes('Mitchell') || l.type === 'lake' || l.type === 'both'
+            );
+            if (lakeUnit) setCurrentLocation(lakeUnit);
+          }
+        }}
+        currentLocation={currentLocation}
+        savedLocations={savedLocations}
+        onSelectLocation={(loc) => setCurrentLocation(loc)}
+        onOpenSearch={() => setIsSearchOpen(true)}
+        solunar={solunar}
+        compositeScore={activeScore}
+      />
+
+      {/* Main Content Area with Mobile Bottom Padding */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 sm:pb-12">
+        {/* Loading Indicator for weather change */}
+        {isLoadingWeather && (
+          <div className="mb-4 bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 text-xs px-3 py-2 rounded-xl flex items-center gap-2 animate-pulse">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span>Syncing atmospheric barometrics & weather gradients for {currentLocation.name}...</span>
+          </div>
+        )}
+
+        {/* Tab 1: Primary Forecast View (Fishing or Hunting) */}
+        {activeTab === 'forecast' && (
+          <>
+            {mode === 'fishing' ? (
+              <FishingForecastView
+                location={currentLocation}
+                weather={weather}
+                solunar={solunar}
+                bassForecast={bassForecast}
+                onUpdateConditions={(updates) => setBassTuning((prev) => ({ ...prev, ...updates }))}
+                onOpenLakeMap={() => setActiveTab('hotspots')}
+              />
+            ) : (
+              <HuntingForecastView
+                location={currentLocation}
+                weather={weather}
+                solunar={solunar}
+                rut={rut}
+                huntingScore={huntingCompositeScore}
+                onOpenStandPlanner={() => setActiveTab('hotspots')}
+              />
+            )}
+          </>
+        )}
+
+        {/* Tab 2: Map & Hotspots View */}
+        {activeTab === 'hotspots' && (
+          <div className="space-y-6">
+            {mode === 'fishing' ? (
+              <InteractiveLakeMap
+                location={currentLocation}
+                weather={weather}
+                hotspots={currentLocation.hotspots || bassForecast.bestZones}
+              />
+            ) : (
+              <WindScentCompass
+                location={currentLocation}
+                weather={weather}
+                standSpots={
+                  currentLocation.standSpots || [
+                    {
+                      id: 'default_stand_1',
+                      name: 'Primary Ridge Saddle Stand',
+                      type: 'ridge_funnel',
+                      x: 45,
+                      y: 35,
+                      rating: 95,
+                      windSafety: 'ideal',
+                      windDirectionPreferred: ['NW', 'N', 'W'],
+                      description: 'High traffic deer crossing between bedding ridge and ag bottom.',
+                      bestTime: 'morning',
+                    },
+                    {
+                      id: 'default_stand_2',
+                      name: 'Creek Crossing Staging Stand',
+                      type: 'creek_crossing',
+                      x: 65,
+                      y: 55,
+                      rating: 92,
+                      windSafety: 'marginal',
+                      windDirectionPreferred: ['S', 'SE'],
+                      description: 'Hard creek crossing with dense brush cover.',
+                      bestTime: 'all_day',
+                    },
+                  ]
+                }
+              />
+            )}
+          </div>
+        )}
+
+        {/* Tab 3: AI Tactical Advisor */}
+        {activeTab === 'advisor' && (
+          <AITacticalAdvisor
+            mode={mode}
+            location={currentLocation}
+            weather={weather}
+            solunar={solunar}
+            bassForecast={bassForecast}
+            rut={rut}
+          />
+        )}
+
+        {/* Tab 4: Catch & Harvest Logs */}
+        {activeTab === 'logs' && (
+          <CatchLogView
+            reports={catchReports}
+            currentLocation={currentLocation}
+            currentWeather={weather}
+            onAddReport={handleAddReport}
+          />
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t border-[#1a2924] bg-[#090f0c] py-6 text-stone-400 text-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-stone-200">ApexCast & RutTrack</span>
+            <span>•</span>
+            <span>Predictive Intelligence for Anglers & Outfitters</span>
+          </div>
+
+          <div className="flex items-center gap-4 text-[11px] text-stone-500 font-mono">
+            <span>Solunar Astronomical Sync</span>
+            <span>•</span>
+            <span>Open-Meteo Barometrics</span>
+            <span>•</span>
+            <span>Gemini 3.8 Flash Tactical Engine</span>
+          </div>
+        </div>
+      </footer>
+
+      {/* Location Search & Coordinate Modal */}
+      <LocationSearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onAddLocation={handleAddLocation}
+      />
+
+      {/* Mobile Fixed Bottom Navigation */}
+      <MobileBottomNav
+        mode={mode}
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        badgeCounts={{ logs: catchReports.length }}
+      />
+    </div>
+  );
+}
