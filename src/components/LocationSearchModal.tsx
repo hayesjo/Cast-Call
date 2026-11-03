@@ -112,20 +112,7 @@ export const LocationSearchModal: React.FC<LocationSearchModalProps> = ({
           approachBearing: 270,
         },
       ],
-      standSpots: [
-        {
-          id: `stand_${Date.now()}_1`,
-          name: `${item.name} Ridge Saddle Stand`,
-          type: 'ridge_funnel',
-          x: 50,
-          y: 40,
-          rating: 95,
-          windSafety: 'ideal',
-          windDirectionPreferred: ['NW', 'N', 'W'],
-          description: 'Natural terrain pinch point between primary bedding and feeding corridors.',
-          bestTime: 'morning',
-        },
-      ],
+      standSpots: [],
     };
 
     onAddLocation(newLoc);
@@ -167,20 +154,7 @@ export const LocationSearchModal: React.FC<LocationSearchModalProps> = ({
           approachBearing: 180,
         },
       ],
-      standSpots: [
-        {
-          id: `stand_${Date.now()}_1`,
-          name: 'Primary Pinch Point Stand',
-          type: 'ridge_funnel',
-          x: 50,
-          y: 45,
-          rating: 92,
-          windSafety: 'ideal',
-          windDirectionPreferred: ['NW', 'N'],
-          description: 'Key travel corridor stand.',
-          bestTime: 'morning',
-        },
-      ],
+      standSpots: [],
     };
 
     onAddLocation(newLoc);

@@ -1,11 +1,11 @@
 import React from 'react';
 import { Mode } from '../types';
-import { Compass, MapPin, Sparkles, Calendar } from 'lucide-react';
+import { Compass, MapPin, CloudSun, Calendar } from 'lucide-react';
 
 interface MobileBottomNavProps {
   mode: Mode;
-  activeTab: 'forecast' | 'hotspots' | 'advisor' | 'calendar';
-  onTabChange: (tab: 'forecast' | 'hotspots' | 'advisor' | 'calendar') => void;
+  activeTab: 'forecast' | 'hotspots' | 'weather' | 'calendar';
+  onTabChange: (tab: 'forecast' | 'hotspots' | 'weather' | 'calendar') => void;
   isFutureDateActive?: boolean;
 }
 
@@ -29,10 +29,10 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       icon: MapPin,
     },
     {
-      id: 'advisor' as const,
-      label: 'AI Advisor',
-      sublabel: 'Gemini Pro',
-      icon: Sparkles,
+      id: 'weather' as const,
+      label: 'Weather',
+      sublabel: 'Radar & Wind',
+      icon: CloudSun,
       highlight: true,
     },
     {

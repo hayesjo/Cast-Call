@@ -17,7 +17,7 @@ import { FishingForecastView } from './components/FishingForecastView';
 import { HuntingForecastView } from './components/HuntingForecastView';
 import { InteractiveLakeMap } from './components/InteractiveLakeMap';
 import { WindScentCompass } from './components/WindScentCompass';
-import { AITacticalAdvisor } from './components/AITacticalAdvisor';
+import { WeatherRadarView } from './components/WeatherRadarView';
 import { FutureForecastCalendar } from './components/FutureForecastCalendar';
 import { LocationSearchModal } from './components/LocationSearchModal';
 import { calculateSolarTimes } from './utils/solarAstronomical';
@@ -59,7 +59,7 @@ export default function App() {
   });
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'forecast' | 'hotspots' | 'advisor' | 'calendar'>('forecast');
+  const [activeTab, setActiveTab] = useState<'forecast' | 'hotspots' | 'weather' | 'calendar'>('forecast');
 
   // Catch & Harvest Reports
   const [catchReports, setCatchReports] = useState<CatchReport[]>(() => {
@@ -125,145 +125,213 @@ export default function App() {
     }
   }, [catchReports]);
 
+  // Fetch live weather function
+  const fetchWeather = async () => {
+    setIsLoadingWeather(true);
+    try {
+      let data: any = null;
+
+      // Try backend proxy first
+      try {
+        const res = await fetch(`/api/weather?lat=${currentLocation.lat}&lon=${currentLocation.lon}`);
+        if (res.ok) {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            data = await res.json();
+          }
+        }
+      } catch {
+        // Backend proxy unavailable (e.g. static export on GitHub Pages)
+      }
+
+      // Direct client fallback to Open-Meteo for GitHub Pages static deployments
+      if (!data || !data.current) {
+        try {
+          const directUrl = `https://api.open-meteo.com/v1/forecast?latitude=${currentLocation.lat}&longitude=${currentLocation.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,dew_point_2m&hourly=temperature_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
+          const directRes = await fetch(directUrl);
+          if (directRes.ok) {
+            data = await directRes.json();
+          }
+        } catch (directErr) {
+          console.warn('Direct Open-Meteo fetch fallback error:', directErr);
+        }
+      }
+
+      if (!data || !data.current) {
+        throw new Error('Unable to retrieve weather data from proxy or direct source.');
+      }
+
+      const current = data.current || {};
+      const hourly = data.hourly || {};
+      const daily = data.daily || {};
+
+      // Convert hPa to inHg: 1 hPa = 0.02953 inHg
+      const rawPressureHpa = current.surface_pressure || 1012;
+      const currentPressureInHg = rawPressureHpa * 0.02953;
+
+      // Calculate pressure trend from hourly data (compare current with 4 hours ago)
+      let trend: 'rapidly_falling' | 'falling' | 'steady' | 'rising' | 'rapidly_rising' = 'steady';
+      let trendText = 'Steady Barometer';
+
+      if (hourly.surface_pressure && hourly.surface_pressure.length > 4) {
+        const pastHpa = hourly.surface_pressure[0];
+        const diffInHg = (rawPressureHpa - pastHpa) * 0.02953;
+        if (diffInHg < -0.06) {
+          trend = 'rapidly_falling';
+          trendText = 'Rapidly Falling (Cold Front)';
+        } else if (diffInHg < -0.02) {
+          trend = 'falling';
+          trendText = 'Falling (Active Feed)';
+        } else if (diffInHg > 0.06) {
+          trend = 'rapidly_rising';
+          trendText = 'Rapidly Rising (Post-Front)';
+        } else if (diffInHg > 0.02) {
+          trend = 'rising';
+          trendText = 'Rising (Stabilizing)';
+        }
+      }
+
+      // Convert degrees to cardinal
+      const deg = current.wind_direction_10m || 0;
+      const cardinals = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+      const cardinal = cardinals[Math.round(deg / 45) % 8];
+
+      // Format sunrise / sunset times
+      const formatTime = (iso?: string) => {
+        if (!iso) return '6:45 AM';
+        const d = new Date(iso);
+        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      };
+
+      const sunrise = daily.sunrise?.[0] ? formatTime(daily.sunrise[0]) : '7:04 AM';
+      const sunset = daily.sunset?.[0] ? formatTime(daily.sunset[0]) : '6:30 PM';
+
+      // Weather condition name mapping helper
+      const getCodeName = (c: number) => {
+        if (c === 0) return 'Clear Skies';
+        if (c >= 1 && c <= 3) return c === 3 ? 'Overcast' : 'Partly Cloudy';
+        if (c >= 45 && c <= 48) return 'Foggy / Low Visibility';
+        if (c >= 51 && c <= 67) return 'Rain / Drizzle';
+        if (c >= 71 && c <= 77) return 'Snow Flurries';
+        if (c >= 80 && c <= 82) return 'Rain Showers';
+        if (c >= 95) return 'Thunderstorms';
+        return 'Clear Skies';
+      };
+
+      const code = current.weather_code || 0;
+      const condName = getCodeName(code);
+
+      // Parse 24 hourly points
+      const hourlyForecast = [];
+      if (hourly.time && hourly.time.length > 0) {
+        const count = Math.min(24, hourly.time.length);
+        for (let i = 0; i < count; i++) {
+          const tIso = hourly.time[i];
+          const hDate = new Date(tIso);
+          const h = hDate.getHours();
+          const hourLabel =
+            i === 0
+              ? 'Now'
+              : h === 0
+              ? '12 AM'
+              : h < 12
+              ? `${h} AM`
+              : h === 12
+              ? '12 PM'
+              : `${h - 12} PM`;
+          const hCode = hourly.weather_code?.[i] ?? 0;
+          const hDeg = hourly.wind_direction_10m?.[i] ?? deg;
+          const hCard = cardinals[Math.round(hDeg / 45) % 8];
+          const hPressure = (hourly.surface_pressure?.[i] ?? rawPressureHpa) * 0.02953;
+
+          hourlyForecast.push({
+            time: tIso,
+            hourLabel,
+            temp: Math.round(hourly.temperature_2m?.[i] ?? current.temperature_2m ?? 65),
+            feelsLike: Math.round(hourly.apparent_temperature?.[i] ?? current.apparent_temperature ?? 63),
+            pressure: parseFloat(hPressure.toFixed(2)),
+            rainProb: Math.round(hourly.precipitation_probability?.[i] ?? 0),
+            windSpeed: Math.round(hourly.wind_speed_10m?.[i] ?? current.wind_speed_10m ?? 8),
+            windDirection: hDeg,
+            windCardinal: hCard,
+            weatherCode: hCode,
+            conditionName: getCodeName(hCode),
+          });
+        }
+      }
+
+      // Parse 7 daily points
+      const dailyForecast = [];
+      if (daily.time && daily.time.length > 0) {
+        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const count = Math.min(7, daily.time.length);
+        for (let i = 0; i < count; i++) {
+          const dIso = daily.time[i];
+          const dDate = new Date(dIso + 'T12:00:00');
+          const dayLabel = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayNames[dDate.getDay()];
+          const dCode = daily.weather_code?.[i] ?? code;
+
+          dailyForecast.push({
+            date: dIso,
+            dayLabel,
+            tempMax: Math.round(daily.temperature_2m_max?.[i] ?? 68),
+            tempMin: Math.round(daily.temperature_2m_min?.[i] ?? 48),
+            weatherCode: dCode,
+            conditionName: getCodeName(dCode),
+            rainProbMax: Math.round(daily.precipitation_probability_max?.[i] ?? 10),
+            windSpeedMax: Math.round(daily.wind_speed_10m_max?.[i] ?? 12),
+            windCardinal: cardinal,
+          });
+        }
+      }
+
+      const updatedWeather: WeatherData = {
+        temp: Math.round(current.temperature_2m ?? 65),
+        feelsLike: Math.round(current.apparent_temperature ?? 63),
+        humidity: Math.round(current.relative_humidity_2m ?? 60),
+        dewPoint: current.dew_point_2m ? Math.round(current.dew_point_2m) : undefined,
+        tempMax: daily.temperature_2m_max?.[0] ? Math.round(daily.temperature_2m_max[0]) : undefined,
+        tempMin: daily.temperature_2m_min?.[0] ? Math.round(daily.temperature_2m_min[0]) : undefined,
+        pressure: parseFloat(currentPressureInHg.toFixed(2)),
+        pressureTrend: trend,
+        pressureTrendText: trendText,
+        windSpeed: Math.round(current.wind_speed_10m ?? 8),
+        windGusts: Math.round(current.wind_gusts_10m ?? 12),
+        windDirection: deg,
+        windCardinal: cardinal,
+        cloudCover: Math.round(current.cloud_cover ?? 50),
+        weatherCode: code,
+        conditionName: condName,
+        sunrise,
+        sunset,
+        hourlyTemps: [],
+        hourlyForecast,
+        dailyForecast,
+      };
+
+      setWeather(updatedWeather);
+
+      // Adjust estimated water temp based on air temp and month if user hasn't explicitly customized
+      const month = new Date().getMonth();
+      let estimatedWater = Math.max(45, Math.min(84, Math.round(updatedWeather.temp * 0.85 + 8)));
+      if (month >= 5 && month <= 8) estimatedWater = Math.max(72, estimatedWater); // Summer
+      if (month === 11 || month === 0 || month === 1) estimatedWater = Math.min(54, estimatedWater); // Winter
+
+      setBassTuning((prev) => ({
+        ...prev,
+        waterTemp: estimatedWater,
+        waterClarity: currentLocation.waterClarityDefault || prev.waterClarity,
+      }));
+    } catch (err) {
+      console.warn('Weather fetch failed, utilizing cached atmospheric snapshot:', err);
+    } finally {
+      setIsLoadingWeather(false);
+    }
+  };
+
   // Fetch live weather whenever current location changes
   useEffect(() => {
-    let isCancelled = false;
-
-    async function fetchWeather() {
-      setIsLoadingWeather(true);
-      try {
-        let data: any = null;
-
-        // Try backend proxy first
-        try {
-          const res = await fetch(`/api/weather?lat=${currentLocation.lat}&lon=${currentLocation.lon}`);
-          if (res.ok) {
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-              data = await res.json();
-            }
-          }
-        } catch {
-          // Backend proxy unavailable (e.g. static export on GitHub Pages)
-        }
-
-        // Direct client fallback to Open-Meteo for GitHub Pages static deployments
-        if (!data || !data.current) {
-          try {
-            const directUrl = `https://api.open-meteo.com/v1/forecast?latitude=${currentLocation.lat}&longitude=${currentLocation.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover&hourly=surface_pressure&daily=sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
-            const directRes = await fetch(directUrl);
-            if (directRes.ok) {
-              data = await directRes.json();
-            }
-          } catch (directErr) {
-            console.warn('Direct Open-Meteo fetch fallback error:', directErr);
-          }
-        }
-
-        if (!data || !data.current) {
-          throw new Error('Unable to retrieve weather data from proxy or direct source.');
-        }
-
-        if (isCancelled) return;
-
-        const current = data.current || {};
-        const hourly = data.hourly || {};
-        const daily = data.daily || {};
-
-        // Convert hPa to inHg: 1 hPa = 0.02953 inHg
-        const rawPressureHpa = current.surface_pressure || 1012;
-        const currentPressureInHg = rawPressureHpa * 0.02953;
-
-        // Calculate pressure trend from hourly data (compare current with 4 hours ago)
-        let trend: 'rapidly_falling' | 'falling' | 'steady' | 'rising' | 'rapidly_rising' = 'steady';
-        let trendText = 'Steady Barometer';
-
-        if (hourly.surface_pressure && hourly.surface_pressure.length > 4) {
-          const pastHpa = hourly.surface_pressure[0];
-          const diffInHg = (rawPressureHpa - pastHpa) * 0.02953;
-          if (diffInHg < -0.06) {
-            trend = 'rapidly_falling';
-            trendText = 'Rapidly Falling (Cold Front)';
-          } else if (diffInHg < -0.02) {
-            trend = 'falling';
-            trendText = 'Falling (Active Feed)';
-          } else if (diffInHg > 0.06) {
-            trend = 'rapidly_rising';
-            trendText = 'Rapidly Rising (Post-Front)';
-          } else if (diffInHg > 0.02) {
-            trend = 'rising';
-            trendText = 'Rising (Stabilizing)';
-          }
-        }
-
-        // Convert degrees to cardinal
-        const deg = current.wind_direction_10m || 0;
-        const cardinals = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-        const cardinal = cardinals[Math.round(deg / 45) % 8];
-
-        // Format sunrise / sunset times
-        const formatTime = (iso?: string) => {
-          if (!iso) return '6:45 AM';
-          const d = new Date(iso);
-          return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-        };
-
-        const sunrise = daily.sunrise?.[0] ? formatTime(daily.sunrise[0]) : '7:04 AM';
-        const sunset = daily.sunset?.[0] ? formatTime(daily.sunset[0]) : '6:30 PM';
-
-        // Weather condition name mapping
-        const code = current.weather_code || 0;
-        let condName = 'Clear Skies';
-        if (code >= 1 && code <= 3) condName = code === 3 ? 'Overcast' : 'Partly Cloudy';
-        else if (code >= 45 && code <= 48) condName = 'Foggy / Low Visibility';
-        else if (code >= 51 && code <= 67) condName = 'Rain / Drizzle';
-        else if (code >= 71 && code <= 77) condName = 'Snow Flurries';
-        else if (code >= 80 && code <= 82) condName = 'Rain Showers';
-        else if (code >= 95) condName = 'Thunderstorms';
-
-        const updatedWeather: WeatherData = {
-          temp: Math.round(current.temperature_2m ?? 65),
-          feelsLike: Math.round(current.apparent_temperature ?? 63),
-          humidity: Math.round(current.relative_humidity_2m ?? 60),
-          pressure: parseFloat(currentPressureInHg.toFixed(2)),
-          pressureTrend: trend,
-          pressureTrendText: trendText,
-          windSpeed: Math.round(current.wind_speed_10m ?? 8),
-          windGusts: Math.round(current.wind_gusts_10m ?? 12),
-          windDirection: deg,
-          windCardinal: cardinal,
-          cloudCover: Math.round(current.cloud_cover ?? 50),
-          weatherCode: code,
-          conditionName: condName,
-          sunrise,
-          sunset,
-          hourlyTemps: [],
-        };
-
-        setWeather(updatedWeather);
-
-        // Adjust estimated water temp based on air temp and month if user hasn't explicitly customized
-        const month = new Date().getMonth();
-        let estimatedWater = Math.max(45, Math.min(84, Math.round(updatedWeather.temp * 0.85 + 8)));
-        if (month >= 5 && month <= 8) estimatedWater = Math.max(72, estimatedWater); // Summer
-        if (month === 11 || month === 0 || month === 1) estimatedWater = Math.min(54, estimatedWater); // Winter
-
-        setBassTuning((prev) => ({
-          ...prev,
-          waterTemp: estimatedWater,
-          waterClarity: currentLocation.waterClarityDefault || prev.waterClarity,
-        }));
-      } catch (err) {
-        console.warn('Weather fetch failed, utilizing cached atmospheric snapshot:', err);
-      } finally {
-        if (!isCancelled) setIsLoadingWeather(false);
-      }
-    }
-
     fetchWeather();
-    return () => {
-      isCancelled = true;
-    };
   }, [currentLocation]);
 
   // Solar calculation for active date (handles future dates astronomically or live weather for today)
@@ -469,48 +537,20 @@ export default function App() {
               <WindScentCompass
                 location={currentLocation}
                 weather={weather}
-                standSpots={
-                  currentLocation.standSpots || [
-                    {
-                      id: 'default_stand_1',
-                      name: 'Primary Ridge Saddle Stand',
-                      type: 'ridge_funnel',
-                      x: 45,
-                      y: 35,
-                      rating: 95,
-                      windSafety: 'ideal',
-                      windDirectionPreferred: ['NW', 'N', 'W'],
-                      description: 'High traffic deer crossing between bedding ridge and ag bottom.',
-                      bestTime: 'morning',
-                    },
-                    {
-                      id: 'default_stand_2',
-                      name: 'Creek Crossing Staging Stand',
-                      type: 'creek_crossing',
-                      x: 65,
-                      y: 55,
-                      rating: 92,
-                      windSafety: 'marginal',
-                      windDirectionPreferred: ['S', 'SE'],
-                      description: 'Hard creek crossing with dense brush cover.',
-                      bestTime: 'all_day',
-                    },
-                  ]
-                }
+                standSpots={[]}
               />
             )}
           </div>
         )}
 
-        {/* Tab 3: AI Tactical Advisor */}
-        {activeTab === 'advisor' && (
-          <AITacticalAdvisor
+        {/* Tab 3: Live Weather & Radar */}
+        {activeTab === 'weather' && (
+          <WeatherRadarView
             mode={mode}
             location={currentLocation}
             weather={weather}
-            solunar={solunar}
-            bassForecast={bassForecast}
-            rut={rut}
+            isLoading={isLoadingWeather}
+            onRefreshWeather={() => fetchWeather()}
           />
         )}
 

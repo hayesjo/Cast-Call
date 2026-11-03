@@ -1,6 +1,6 @@
 {
   "name": "ApexCast & RutTrack - Fishing & Hunting Intelligence Platform",
-  "description": "Predictive fishing and hunting intelligence with solunar tables, rut phase index, water temperature, barometric trends, bass lure & spot selector, and AI tactical advisory.",
+  "description": "Predictive fishing and hunting intelligence with solunar tables, rut phase index, water temperature, barometric trends, bass lure & spot selector, and live Doppler weather radar & atmospheric telemetry.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

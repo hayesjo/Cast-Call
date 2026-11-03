@@ -57,13 +57,41 @@ export interface SavedLocation {
   hotspots?: Hotspot[];
   standSpots?: StandHotspot[];
   propertyMapUrl?: string;
+  mapAspectRatio?: string;
   isCustom?: boolean;
+}
+
+export interface HourlyWeatherPoint {
+  time: string;
+  hourLabel: string;
+  temp: number;
+  feelsLike: number;
+  pressure: number;
+  rainProb: number;
+  windSpeed: number;
+  windDirection: number;
+  windCardinal: string;
+  weatherCode: number;
+  conditionName: string;
+}
+
+export interface DailyWeatherPoint {
+  date: string;
+  dayLabel: string;
+  tempMax: number;
+  tempMin: number;
+  weatherCode: number;
+  conditionName: string;
+  rainProbMax: number;
+  windSpeedMax: number;
+  windCardinal: string;
 }
 
 export interface WeatherData {
   temp: number;
   feelsLike: number;
   humidity: number;
+  dewPoint?: number;
   pressure: number; // in inHg or hPa
   pressureTrend: 'rapidly_falling' | 'falling' | 'steady' | 'rising' | 'rapidly_rising';
   pressureTrendText: string;
@@ -74,9 +102,16 @@ export interface WeatherData {
   cloudCover: number; // %
   weatherCode: number;
   conditionName: string;
+  tempMax?: number;
+  tempMin?: number;
+  precipitation?: number;
+  visibility?: number;
+  uvIndex?: number;
   sunrise: string;
   sunset: string;
   hourlyTemps: { time: string; temp: number; pressure: number; rainProb: number }[];
+  hourlyForecast?: HourlyWeatherPoint[];
+  dailyForecast?: DailyWeatherPoint[];
 }
 
 export interface MoonPhaseData {

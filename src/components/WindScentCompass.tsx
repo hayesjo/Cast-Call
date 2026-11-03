@@ -1,47 +1,45 @@
-import React, { useState, useEffect } from 'react';
-import { StandHotspot, WeatherData, SavedLocation } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { StandHotspot, WeatherData, SavedLocation, HourlyWeatherPoint } from '../types';
 import {
   Wind,
-  ShieldCheck,
-  ShieldAlert,
   Compass,
-  MapPin,
-  Crosshair,
   Layers,
   Image as ImageIcon,
   Maximize2,
   X,
-  Camera,
-  Home,
-  AlertTriangle,
-  Eye,
-  Radio,
-  CheckCircle2,
   Navigation,
+  Clock,
+  RotateCcw,
+  AlertTriangle,
+  Sun,
+  Sunset,
+  Sunrise,
+  Calendar,
+  Sparkles,
 } from 'lucide-react';
 
 interface WindScentCompassProps {
   weather: WeatherData;
-  standSpots: StandHotspot[];
+  standSpots?: StandHotspot[];
   location?: SavedLocation;
 }
 
 export const WindScentCompass: React.FC<WindScentCompassProps> = ({
   weather,
-  standSpots,
   location,
 }) => {
-  const [selectedStand, setSelectedStand] = useState<StandHotspot | null>(
-    standSpots[0] || null
-  );
-
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
-  const [coneMode, setConeMode] = useState<'selected' | 'all'>('selected');
+  const [selectedHour, setSelectedHour] = useState<HourlyWeatherPoint | null>(null);
+  const [timeFilter, setTimeFilter] = useState<'all' | 'morning' | 'evening'>('all');
 
-  // Property aerial photo (Rosebush MI uploaded map or location propertyMapUrl)
+  // Property aerial photo (LeRoy MI, Tustin MI, Rosebush MI uploaded map, or location propertyMapUrl)
   const rawAerialPhoto =
     location?.propertyMapUrl ||
-    (location?.name?.toLowerCase().includes('rosebush')
+    (location?.name?.toLowerCase().includes('leroy')
+      ? './assets/aistudio/LeRoyHunt_44bbd6d7.png'
+      : location?.name?.toLowerCase().includes('tustin')
+      ? './assets/aistudio/TustinHunt_14cc4678.png'
+      : location?.name?.toLowerCase().includes('rosebush')
       ? './assets/aistudio/RosebushHunt_229e051e.png'
       : undefined);
 
@@ -54,691 +52,906 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
 
   const hasAerialMap = Boolean(propertyAerialPhoto);
 
-  // If the location has an uploaded aerial property map (like Rosebush, MI), default to aerial view
+  const isLeRoy =
+    Boolean(location?.name?.toLowerCase().includes('leroy')) ||
+    Boolean(location?.propertyMapUrl?.includes('LeRoy'));
+
+  const isTustin =
+    Boolean(location?.name?.toLowerCase().includes('tustin')) ||
+    Boolean(location?.propertyMapUrl?.includes('Tustin'));
+
+  const isRosebush =
+    Boolean(location?.name?.toLowerCase().includes('rosebush')) ||
+    Boolean(location?.propertyMapUrl?.includes('Rosebush'));
+
+  const mapAspectRatio =
+    location?.mapAspectRatio ||
+    (isLeRoy ? '1206 / 2213' : isTustin ? '1077 / 915' : '1012 / 1307');
+
+  // If the location has an uploaded aerial property map, default to aerial view
   const [viewMode, setViewMode] = useState<'aerial' | 'radar'>(
     hasAerialMap ? 'aerial' : 'radar'
   );
 
-  // Sync viewMode and selectedStand when location or standSpots update
   useEffect(() => {
     if (hasAerialMap) {
       setViewMode('aerial');
     }
-    if (standSpots && standSpots.length > 0) {
-      // Keep existing selected if present in list, otherwise select first
-      const stillExists = standSpots.find((s) => s.id === selectedStand?.id);
-      setSelectedStand(stillExists || standSpots[0]);
+    // Reset hour preview on location change
+    setSelectedHour(null);
+  }, [location?.id, location?.name, hasAerialMap]);
+
+  // Fallback 24-hour generator if weather.hourlyForecast is empty
+  const hourlyData: HourlyWeatherPoint[] = useMemo(() => {
+    if (weather.hourlyForecast && weather.hourlyForecast.length > 0) {
+      return weather.hourlyForecast;
     }
-  }, [location?.id, location?.name, hasAerialMap, standSpots]);
-
-  const windAngle = weather.windDirection; // 0 is North
-  const downwindAngle = (windAngle + 180) % 360; // Scent blows downwind
-
-  // Helper to determine if stand is safe with current wind direction
-  const evaluateStandWind = (
-    stand: StandHotspot
-  ): { safe: boolean; status: 'Ideal' | 'Marginal' | 'Compromised'; reason: string } => {
-    // Special handling for Camp / Ingress hub
-    if (stand.iconCategory === 'cabin' || stand.type === 'cabin_access') {
-      return {
-        safe: true,
-        status: 'Ideal',
-        reason: `Prevailing ${weather.windSpeed} mph ${weather.windCardinal} wind. Depart camp walking into or cross-shoulder to the wind to access northern timber or river stands without blowing scent into bedding zones.`,
-      };
-    }
-
-    const isPreferred = stand.windDirectionPreferred.includes(weather.windCardinal);
-    if (isPreferred) {
-      if (stand.iconCategory === 'trail_cam') {
-        return {
-          safe: true,
-          status: 'Ideal',
-          reason: `Prevailing ${weather.windCardinal} wind carries scent away from the scrape line and bedding pocket. Safe to check camera cards without scent-polluting the deer hub.`,
-        };
-      }
-      if (stand.iconCategory === 'crossroads') {
-        return {
-          safe: true,
-          status: 'Ideal',
-          reason: `Prime wind angle! Cruising bucks entering the crossroads from river or ridge will approach upwind of your vantage, giving clear daylight shooting opportunities.`,
-        };
-      }
-      return {
-        safe: true,
-        status: 'Ideal',
-        reason: `Prevailing ${weather.windCardinal} wind carries hunter scent away from expected deer approach corridors into open or non-target buffer zones.`,
-      };
-    }
-
-    // Check neighboring cardinal
+    // Generate 24 hours based on current weather parameters
+    const points: HourlyWeatherPoint[] = [];
+    const now = new Date();
     const cardinals = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-    const currentIdx = cardinals.indexOf(weather.windCardinal);
-    const hasNeighbor = stand.windDirectionPreferred.some((pref) => {
-      const prefIdx = cardinals.indexOf(pref);
-      return Math.abs(currentIdx - prefIdx) <= 1 || Math.abs(currentIdx - prefIdx) === 7;
-    });
+    for (let i = 0; i < 24; i++) {
+      const hDate = new Date(now.getTime() + i * 3600 * 1000);
+      const h = hDate.getHours();
+      const hourLabel =
+        i === 0
+          ? 'Now'
+          : h === 0
+          ? '12 AM'
+          : h < 12
+          ? `${h} AM`
+          : h === 12
+          ? '12 PM'
+          : `${h - 12} PM`;
 
-    if (hasNeighbor) {
-      if (stand.iconCategory === 'trail_cam') {
+      // Slight natural wind veer & speed variance
+      const speedOffset = Math.sin(i / 3) * 3;
+      const dirOffset = Math.round(Math.cos(i / 4) * 20);
+      const hDir = (weather.windDirection + dirOffset + 360) % 360;
+      const hCard = cardinals[Math.round(hDir / 45) % 8];
+      const hSpeed = Math.max(3, Math.round(weather.windSpeed + speedOffset));
+
+      points.push({
+        time: hDate.toISOString(),
+        hourLabel,
+        temp: Math.round(weather.temp + Math.sin((h - 8) / 3) * 6),
+        feelsLike: Math.round(weather.feelsLike + Math.sin((h - 8) / 3) * 6),
+        pressure: weather.pressure,
+        rainProb: Math.max(0, Math.min(100, Math.round(10 + Math.sin(i) * 15))),
+        windSpeed: hSpeed,
+        windDirection: hDir,
+        windCardinal: hCard,
+        weatherCode: weather.weatherCode,
+        conditionName: weather.conditionName,
+      });
+    }
+    return points;
+  }, [weather]);
+
+  // Filter hourly data if Morning (5 AM - 11 AM) or Evening (3 PM - 9 PM) filter selected
+  const filteredHourlyData = useMemo(() => {
+    if (timeFilter === 'all') return hourlyData;
+    return hourlyData.filter((pt) => {
+      const d = new Date(pt.time);
+      const h = d.getHours();
+      if (timeFilter === 'morning') return h >= 5 && h <= 11;
+      if (timeFilter === 'evening') return h >= 15 && h <= 21;
+      return true;
+    });
+  }, [hourlyData, timeFilter]);
+
+  // Detect major wind direction shifts across the timeline
+  const windShiftInfo = useMemo(() => {
+    if (hourlyData.length < 2) return null;
+    let shiftHour: HourlyWeatherPoint | null = null;
+    const baseDir = hourlyData[0].windDirection;
+
+    for (let i = 1; i < Math.min(18, hourlyData.length); i++) {
+      const diff = Math.abs(hourlyData[i].windDirection - baseDir);
+      const normalizedDiff = diff > 180 ? 360 - diff : diff;
+      if (normalizedDiff >= 45) {
+        shiftHour = hourlyData[i];
+        break;
+      }
+    }
+    return shiftHour;
+  }, [hourlyData]);
+
+  // Active wind values (either live current or previewed future hour)
+  const isPreviewing = selectedHour !== null;
+  const activeWindSpeed = selectedHour ? selectedHour.windSpeed : weather.windSpeed;
+  const activeWindDirection = selectedHour ? selectedHour.windDirection : weather.windDirection;
+  const activeWindCardinal = selectedHour ? selectedHour.windCardinal : weather.windCardinal;
+  const activeTemp = selectedHour ? selectedHour.temp : weather.temp;
+  const activePressure = selectedHour ? selectedHour.pressure : weather.pressure;
+
+  const windAngle = activeWindDirection; // 0 is North
+  // The scent cone travels in the active wind direction
+  const downwindAngle = windAngle;
+
+  // Property-wide scent analysis dynamically tailored to location
+  const getParcelScentAnalysis = () => {
+    const card = activeWindCardinal;
+
+    // Tustin, MI (Carey & Janke Tract along 160th Ave)
+    if (isTustin) {
+      if (card === 'NW') {
         return {
-          safe: true,
-          status: 'Marginal',
-          reason: `Cross-wind warning. Scent could linger near the trail camera corridor. Wear rubber boots and apply strict scent-elimination spray.`,
+          driftDirection: 'Southeast (Across 160th Ave Corridor)',
+          summary: 'Northwest Wind Drift Across Ridge',
+          detail:
+            'A NW wind carries human scent from the high northwest elevation contour southeast across the open clearing toward the 160th Ave fence line. Center oak knolls and western contour saddles provide clean upwind staging.',
+          accessAdvice:
+            'Enter along the western timber line or southwest perimeter, keeping the wind in your face as you approach central knolls.',
+          thermals:
+            'Thermal updrafts rise along western contour ridges in mid-morning; evening cooling pulls scent down into the south marsh basin.',
+        };
+      }
+      if (card === 'W') {
+        return {
+          driftDirection: 'East (160th Avenue Boundary)',
+          summary: 'West Wind Airflow Corridor',
+          detail:
+            'West wind pushes scent eastward straight across the Carey & Janke parcel toward 160th Ave. The western contour ridge provides a completely clean upwind staging position for afternoon sits.',
+          accessAdvice:
+            'Access from the southwest perimeter, keeping scent blowing toward 160th Ave away from interior deer bedding.',
+          thermals:
+            'Stable horizontal airflow across the center clearing during afternoon sunshine.',
+        };
+      }
+      if (card === 'SW' || card === 'S') {
+        return {
+          driftDirection: card === 'SW' ? 'Northeast (Upper Thicket Basin)' : 'North (North Boundary Ridge)',
+          summary: 'Southerly Flow Vector',
+          detail:
+            'South/Southwest wind carries hunter scent toward the northeast thicket pocket and northern parcel border. South marsh bedding perimeter remains safe and clean.',
+          accessAdvice:
+            'Enter from 160th Ave south shoulder and slip along the south contour to keep downwind of moving bucks.',
+          thermals:
+            'Swirling eddy currents can form in the south marsh depression during mid-day; maintain strict scent control.',
+        };
+      }
+      if (card === 'N' || card === 'NE') {
+        return {
+          driftDirection: card === 'N' ? 'South (South Marsh Basin)' : 'Southwest (SW Timber Pocket)',
+          summary: 'Northerly Scent Corridor',
+          detail:
+            'North wind carries scent downward into the south marsh basin. Center ridge positions and 160th Ave northern approaches stay clean.',
+          accessAdvice:
+            'Enter via 160th Ave from the north boundary and overlook the southern bedding pocket.',
+          thermals:
+            'Thermal pooling settles in the low south marsh thicket at dusk.',
         };
       }
       return {
-        safe: true,
-        status: 'Marginal',
-        reason: `Cross-wind situation. Thermal drift could swirl scent into secondary deer trails or river bottom eddies. Maintain strict scent control.`,
+        driftDirection: 'West (Interior Ridge Timber)',
+        summary: 'Easterly Flow Corridor',
+        detail:
+          'East wind blows scent from 160th Ave westward into the interior timber. Avoid 160th Ave entry points to prevent educating deer in the center clearing.',
+        accessAdvice:
+          'Circle to the south or north fence lines before entering interior woods.',
+        thermals:
+          'Gentle east breezes hold scent along the open clearing floor before dispersing over western ridges.',
       };
     }
 
-    if (stand.iconCategory === 'trail_cam') {
+    // Rosebush, MI (Chippewa River Corridor)
+    if (isRosebush) {
+      if (card === 'NW' || card === 'N') {
+        return {
+          driftDirection: 'Southeast (Across Chippewa River)',
+          summary: 'Northerly River Corridor Drift',
+          detail:
+            'North/Northwest wind pushes scent southeast across the Chippewa River corridor into open agricultural fields. North hardwood ridges and river bend funnels offer prime upwind vantage.',
+          accessAdvice:
+            'Approach from the north boundary road, slipping down through the mature oaks with wind in your face.',
+          thermals:
+            'River water temperature moderates thermal draft swings, creating consistent morning updrafts along high banks.',
+        };
+      }
+      if (card === 'W' || card === 'SW') {
+        return {
+          driftDirection: 'East (Toward Eastern Farm Boundary)',
+          summary: 'Westerly Airflow Stream',
+          detail:
+            'West and Southwest wind carries scent eastward away from the main river bedding sanctuary. Ideal for intercepting bucks cruising parallel to the river oxbow.',
+          accessAdvice:
+            'Slip in from the western boundary lane to access river bottom pinch points cleanly.',
+          thermals:
+            'Late afternoon river eddies can pull scent downstream; maintain rubber boots and scent sprays.',
+        };
+      }
       return {
-        safe: false,
-        status: 'Compromised',
-        reason: `Wind blows directly into core bedding sanctuaries. Avoid checking this camera or hunting this line today to avoid educating mature bucks.`,
-      };
-    }
-    if (stand.iconCategory === 'crossroads') {
-      return {
-        safe: false,
-        status: 'Compromised',
-        reason: `Prevailing ${weather.windCardinal} wind pushes human scent straight down the primary trail intersection. Any approaching buck will catch wind and spook.`,
+        driftDirection: 'West / Northwest (River Bottom Thickets)',
+        summary: 'Easterly / Southerly Flow Vector',
+        detail:
+          'Wind carries scent westward toward the core river sanctuary. Approach with caution and use eastern edge trails.',
+        accessAdvice:
+          'Stage along the eastern field edge and avoid penetrating deep into river oxbows on east winds.',
+        thermals:
+          'Cool morning air settles along the river bend, pulling scent down into oxbow lowlands until sun rises.',
       };
     }
 
+    // LeRoy / Default Osceola County Parcel Analysis
+    if (card === 'NW') {
+      return {
+        driftDirection: 'Northwest (Bear Lake & North Tract)',
+        summary: 'Northwest Wind Scent Stream',
+        detail:
+          'Active Northwest wind carries hunter and property scent directly toward the Northwest perimeter. Southern 1400ft ridge spines and Cadillac Forest approaches remain safe and uncompromised.',
+        accessAdvice:
+          'Approach silently via the southern Private Road keeping the brisk wind in your face or cross-shoulder.',
+        thermals:
+          'Morning solar heating pushes updrafts up the 1400ft contour ridges; evening cooling pulls scent down into low pockets.',
+      };
+    }
+    if (card === 'W') {
+      return {
+        driftDirection: 'West (McGrain Boundary)',
+        summary: 'Westward Airflow Corridor',
+        detail:
+          'A West wind carries scent across toward the western timber boundary. Eastern ridges and central access lanes provide clean upwind staging.',
+        accessAdvice:
+          'Enter along the eastern lanes, keeping scent drifting out toward the western perimeter.',
+        thermals:
+          'Perch Lake acts as a thermal buffer in late afternoon, stabilizing scent drift until sundown.',
+      };
+    }
+    if (card === 'SW' || card === 'S') {
+      return {
+        driftDirection: card === 'SW' ? 'Southwest (South Marsh Basin)' : 'South (Cadillac Forest Unit)',
+        summary: 'Southerly Flow Vector',
+        detail:
+          'Wind pushes scent toward the southern parcel boundaries and Cadillac Forest. Northern Bear Lake shoreline trails and secluded food plots remain clean.',
+        accessAdvice:
+          'Access from northern ingress points or swing wide to avoid drifting scent into southern deer travel zones.',
+        thermals:
+          'Gentle winds can swirl around low marsh points during mid-day thermal transitions; maintain scent suppression.',
+      };
+    }
+    if (card === 'N' || card === 'NE') {
+      return {
+        driftDirection: card === 'N' ? 'North (Bear Lake Basin)' : 'Northeast (Upper Ponds & Swamp)',
+        summary: 'Northerly Scent Corridor',
+        detail:
+          'Active North/Northeast flow carries scent northward toward Bear Lake and northeast ponds. Southern timber ridges and clover food plot approaches stay clear.',
+        accessAdvice:
+          'Approach from the south lane, keeping your movement downwind of northern bedding thickets.',
+        thermals:
+          'Strongest scent holding power along low swamp edges; deer bed on high south-facing slopes.',
+      };
+    }
     return {
-      safe: false,
-      status: 'Compromised',
-      reason: `Wind is blowing directly toward bedding sanctuaries or main river funnels. Highly likely to spook approaching deer. Avoid this stand today.`,
+      driftDirection: 'East / Southeast (Prosch & Eastern Woods)',
+      summary: 'Easterly Flow Corridor',
+      detail:
+        'East-component winds carry scent eastward across the open parcel. Western timber edges offer high upwind safety.',
+      accessAdvice:
+        'Utilize the western property edge to enter with clean wind protection.',
+      thermals:
+        'Watch for evening thermal drainage pooling into low marsh pockets near the south boundary.',
     };
   };
 
-  // Tally counts of wind safety
-  const stats = React.useMemo(() => {
-    let ideal = 0;
-    let marginal = 0;
-    let compromised = 0;
-    standSpots.forEach((s) => {
-      const res = evaluateStandWind(s);
-      if (res.status === 'Ideal') ideal++;
-      else if (res.status === 'Marginal') marginal++;
-      else compromised++;
-    });
-    return { ideal, marginal, compromised, total: standSpots.length };
-  }, [standSpots, weather.windCardinal]);
-
-  // Helper to get marker icon and category label
-  const getSpotIcon = (stand: StandHotspot) => {
-    if (stand.iconCategory === 'cabin' || stand.type === 'cabin_access') {
-      return <Home className="w-3.5 h-3.5" />;
-    }
-    if (stand.iconCategory === 'crossroads') {
-      return <span className="font-extrabold text-[12px] leading-none">✕</span>;
-    }
-    if (stand.iconCategory === 'trail_cam' || stand.type === 'trail_camera') {
-      return <Camera className="w-3.5 h-3.5" />;
-    }
-    if (stand.iconCategory === 'box_blind' || stand.type === 'box_blind') {
-      return <Layers className="w-3.5 h-3.5" />;
-    }
-    return <Crosshair className="w-3.5 h-3.5" />;
-  };
-
-  const getSpotLabel = (stand: StandHotspot) => {
-    if (stand.iconCategory === 'cabin' || stand.type === 'cabin_access') return 'Camp & Access';
-    if (stand.iconCategory === 'crossroads') return 'Intersection (X)';
-    if (stand.iconCategory === 'trail_cam' || stand.type === 'trail_camera') return 'Trail Cam';
-    if (stand.iconCategory === 'box_blind' || stand.type === 'box_blind') return 'Box Blind';
-    return 'Ladder Stand';
-  };
+  const parcelAnalysis = getParcelScentAnalysis();
 
   return (
-    <div className="bg-[#111a17] border border-[#233830] rounded-2xl overflow-hidden shadow-xl">
-      {/* Top Header Bar */}
-      <div className="p-3 sm:p-4 bg-[#14201c] border-b border-[#233830] flex flex-wrap items-center justify-between gap-2 sm:gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-bold text-sm text-stone-100 flex items-center gap-1.5">
-              <Compass className="w-4 h-4 text-amber-400" />
-              <span>
-                {location?.name ? `${location.name} Stand Wind & Scent Planner` : 'Stand Wind & Scent Planner'}
-              </span>
-            </h3>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800/60 font-mono">
-              Live Wind Direction
-            </span>
+    <div className="space-y-6">
+      {/* ========================================================= */}
+      {/* SECTION 1: CLEAN TACTICAL MAP & PARCEL SCENT INTELLIGENCE */}
+      {/* ========================================================= */}
+      <div className="bg-[#111a17] border border-[#233830] rounded-2xl overflow-hidden shadow-xl">
+        {/* Top Header Bar */}
+        <div className="p-3 sm:p-4 bg-[#14201c] border-b border-[#233830] flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-sm text-stone-100 flex items-center gap-1.5">
+                <Compass className="w-4 h-4 text-amber-400" />
+                <span>
+                  {location?.name ? `${location.name} Wind & Scent Direction Map` : 'Stand Wind & Scent Direction Map'}
+                </span>
+              </h3>
+              {isPreviewing ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono animate-pulse flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  <span>Previewing {selectedHour?.hourLabel} Forecast</span>
+                </span>
+              ) : (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800/60 font-mono">
+                  Live Wind Direction
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-stone-400 mt-0.5">
+              {isPreviewing
+                ? `Simulating forecasted ${activeWindSpeed} mph ${activeWindCardinal} (${activeWindDirection}°) wind vector and downwind scent drift corridor for ${selectedHour?.hourLabel}.`
+                : `High-resolution aerial satellite survey of ${location?.name || 'Hunting Unit'}, MI with real-time tactical wind direction vector and scent drift corridor centered on the property.`}
+            </p>
           </div>
-          <p className="text-[11px] text-stone-400 mt-0.5">
-            Click any stand, blind, camera, or crossing icon on the Rosebush parcel map to inspect downwind scent cones and safety.
-          </p>
+
+          {/* View Switcher, Preview Reset & Live Wind Pill */}
+          <div className="flex flex-wrap items-center gap-2">
+            {isPreviewing && (
+              <button
+                onClick={() => setSelectedHour(null)}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs bg-cyan-900/80 hover:bg-cyan-800 text-cyan-100 border border-cyan-600 transition-colors shadow-sm font-semibold"
+                title="Reset map to current live wind"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Return to Live Wind</span>
+              </button>
+            )}
+
+            {hasAerialMap && (
+              <div className="flex p-0.5 bg-[#172520] rounded-xl border border-[#284036]">
+                <button
+                  onClick={() => setViewMode('aerial')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    viewMode === 'aerial'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  <span>Property Aerial</span>
+                </button>
+                <button
+                  onClick={() => setViewMode('radar')}
+                  className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                    viewMode === 'radar'
+                      ? 'bg-amber-600 text-white shadow-sm'
+                      : 'text-stone-400 hover:text-stone-200'
+                  }`}
+                >
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Tactical Radar</span>
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5 bg-[#182621] px-2.5 py-1 rounded-xl border border-[#2b443a] text-xs">
+              <Wind className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+              <span className="font-mono font-bold text-stone-200">
+                {activeWindSpeed} mph {activeWindCardinal}
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* View Switcher, Cone Toggle & Live Wind Pill */}
-        <div className="flex flex-wrap items-center gap-2">
-          {hasAerialMap && (
-            <div className="flex p-0.5 bg-[#172520] rounded-xl border border-[#284036]">
-              <button
-                onClick={() => setViewMode('aerial')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  viewMode === 'aerial'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-stone-400 hover:text-stone-200'
-                }`}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
+          {/* VIEW 1: AERIAL PROPERTY MAP (Clean without stand pins) */}
+          {viewMode === 'aerial' && hasAerialMap ? (
+            <div className="lg:col-span-7 bg-[#0a120f] min-h-[440px] p-2 sm:p-4 flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-r border-[#233830] relative overflow-hidden">
+              {/* Interactive Aerial Satellite Map Container */}
+              <div
+                style={{ aspectRatio: mapAspectRatio }}
+                className={`relative w-full ${
+                  isLeRoy
+                    ? 'max-w-[320px] sm:max-w-[360px]'
+                    : isTustin
+                    ? 'max-w-md sm:max-w-xl'
+                    : 'max-w-sm sm:max-w-md'
+                } rounded-2xl overflow-hidden border border-[#2e4c41] shadow-2xl bg-black select-none`}
               >
-                <ImageIcon className="w-3.5 h-3.5" />
-                <span>Property Aerial</span>
-              </button>
-              <button
-                onClick={() => setViewMode('radar')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
-                  viewMode === 'radar'
-                    ? 'bg-amber-600 text-white shadow-sm'
-                    : 'text-stone-400 hover:text-stone-200'
-                }`}
-              >
-                <Compass className="w-3.5 h-3.5" />
-                <span>Tactical Radar</span>
-              </button>
+                {/* Actual Uploaded Satellite Aerial Photo */}
+                <img
+                  src={propertyAerialPhoto}
+                  alt={`${location?.name || 'Hunt Property'} Satellite Map`}
+                  className="w-full h-full object-cover"
+                />
+
+                {/* Floating Prevailing Wind Vector & Compass Overlay */}
+                <div className="absolute top-2.5 right-2.5 z-20 bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] rounded-xl p-2 flex flex-col items-center shadow-lg">
+                  <span className="text-[9px] font-mono font-bold text-amber-400">N</span>
+                  <div className="w-6 h-6 relative my-0.5">
+                    <div
+                      className="w-full h-full transition-transform duration-700"
+                      style={{ transform: `rotate(${windAngle}deg)` }}
+                    >
+                      <div className="w-0.5 h-6 bg-gradient-to-b from-rose-500 to-amber-400 mx-auto" />
+                      <div className="w-0 h-0 border-x-4 border-x-transparent border-b-6 border-b-rose-500 absolute -top-1 left-1/2 -translate-x-1/2" />
+                    </div>
+                  </div>
+                  <span className="text-[8px] font-mono text-stone-300">
+                    {activeWindSpeed}m {activeWindCardinal}
+                  </span>
+                </div>
+
+                {/* Property Identification Banner & Fullscreen Zoom trigger */}
+                <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5">
+                  <div className="bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] px-2.5 py-1 rounded-lg text-[10px] text-stone-200 font-mono shadow-md flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    <span>
+                      {location?.name || 'Property'} • Central Wind Vector
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setIsZoomModalOpen(true)}
+                    aria-label="View full photo"
+                    className="bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] p-1.5 rounded-lg text-amber-400 hover:text-white hover:bg-amber-600 transition-colors shadow-md"
+                    title="Expand Full Photo"
+                  >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* CENTRAL TACTICAL WIND DIRECTION INDICATOR (In the middle of the map) */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex items-center justify-center">
+                  {/* Scent Dispersion Drift Cone originating from center */}
+                  <div
+                    className="absolute pointer-events-none transition-transform duration-700"
+                    style={{ transform: `rotate(${downwindAngle}deg)` }}
+                  >
+                    {/* Ambient Scent Cloud */}
+                    <div
+                      className="w-0 h-0 border-x-[52px] border-x-transparent border-t-[160px] border-t-rose-600/35 filter blur-[2px]"
+                      style={{ transform: 'translate(-50%, -100%)' }}
+                    />
+                    {/* Core Thermal Stream */}
+                    <div
+                      className="w-0 h-0 border-x-[34px] border-x-transparent border-t-[145px] border-t-rose-500/50 absolute top-0 left-0"
+                      style={{ transform: 'translate(-50%, -100%)' }}
+                    />
+                    {/* Downwind pulsing particle */}
+                    <div
+                      className="w-2.5 h-2.5 rounded-full bg-rose-400 absolute animate-ping"
+                      style={{ transform: 'translate(-50%, -85px)' }}
+                    />
+                  </div>
+
+                  {/* 360-Degree Compass Dial HUD Ring */}
+                  <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full border-2 border-amber-400/80 bg-[#07130e]/85 backdrop-blur-md shadow-2xl shadow-black/90 flex items-center justify-center">
+                    {/* Outer glow ring */}
+                    <div className="absolute -inset-1.5 rounded-full border border-amber-400/25 animate-pulse pointer-events-none" />
+
+                    {/* Crosshairs */}
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-full h-[1px] bg-emerald-500/30" />
+                      <div className="h-full w-[1px] bg-emerald-500/30 absolute" />
+                    </div>
+
+                    {/* Compass Cardinals */}
+                    <span className="absolute top-1 text-[11px] font-mono font-black text-amber-400 tracking-wider">N</span>
+                    <span className="absolute bottom-1 text-[10px] font-mono font-bold text-stone-300">S</span>
+                    <span className="absolute right-1.5 text-[10px] font-mono font-bold text-stone-300">E</span>
+                    <span className="absolute left-1.5 text-[10px] font-mono font-bold text-stone-300">W</span>
+
+                    {/* Compass Ordinals */}
+                    <span className="absolute top-5 right-5 text-[8px] font-mono text-stone-400">NE</span>
+                    <span className="absolute bottom-5 right-5 text-[8px] font-mono text-stone-400">SE</span>
+                    <span className="absolute bottom-5 left-5 text-[8px] font-mono text-stone-400">SW</span>
+                    <span className="absolute top-5 left-5 text-[8px] font-mono text-stone-400">NW</span>
+
+                    {/* Rotating Wind Vector Arrow */}
+                    <div
+                      className="absolute inset-0 flex items-center justify-center transition-transform duration-700 pointer-events-none"
+                      style={{ transform: `rotate(${windAngle}deg)` }}
+                    >
+                      <div className="relative w-1.5 h-28 sm:h-34">
+                        {/* Direction Arrow Head */}
+                        <div className="w-0 h-0 border-x-6 border-x-transparent border-b-10 border-b-amber-400 absolute -top-2 left-1/2 -translate-x-1/2 drop-shadow-[0_0_10px_rgba(251,191,36,0.95)]" />
+                        {/* Arrow Shaft */}
+                        <div className="w-1.5 h-full bg-gradient-to-b from-amber-400 via-amber-500 to-rose-500 rounded-full mx-auto" />
+                        {/* Feather tail */}
+                        <div className="w-3.5 h-0.5 bg-rose-400 rounded-full absolute -bottom-1 left-1/2 -translate-x-1/2" />
+                      </div>
+                    </div>
+
+                    {/* Center Core Display Badge */}
+                    <div className="relative z-10 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#0a1813] border-2 border-amber-400/80 shadow-inner flex flex-col items-center justify-center text-center p-1">
+                      <Wind className="w-4 h-4 text-amber-400 animate-pulse mb-0.5" />
+                      <div className="text-xs sm:text-sm font-black font-mono text-white leading-tight">
+                        {activeWindCardinal}
+                      </div>
+                      <div className="text-[11px] sm:text-xs font-bold font-mono text-amber-400 leading-none">
+                        {activeWindSpeed} <span className="text-[9px] font-normal text-stone-300">MPH</span>
+                      </div>
+                      <div className="text-[9px] font-mono text-stone-400 mt-0.5">
+                        {activeWindDirection}°
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* VIEW 2: TACTICAL RADAR COMPASS */
+            <div className="lg:col-span-7 bg-[#0c1512] min-h-[360px] sm:min-h-[420px] p-3 sm:p-6 relative flex items-center justify-center border-b lg:border-b-0 lg:border-r border-[#233830] overflow-hidden">
+              {/* Radar Circles */}
+              <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-full border border-[#1e342c] flex items-center justify-center shrink-0">
+                <div className="w-50 h-50 sm:w-56 sm:h-56 rounded-full border border-[#1b2f27] flex items-center justify-center">
+                  <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full border border-[#162922] flex items-center justify-center">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border border-[#14241e]" />
+                  </div>
+                </div>
+
+                {/* Crosshairs */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="w-full h-[1px] bg-[#1a3028]" />
+                  <div className="h-full w-[1px] bg-[#1a3028] absolute" />
+                </div>
+
+                {/* Compass Cardinal Labels */}
+                <span className="absolute top-2 text-[11px] font-mono font-bold text-amber-400">N</span>
+                <span className="absolute bottom-2 text-[11px] font-mono font-bold text-stone-400">S</span>
+                <span className="absolute right-2 text-[11px] font-mono font-bold text-stone-400">E</span>
+                <span className="absolute left-2 text-[11px] font-mono font-bold text-stone-400">W</span>
+
+                {/* Scent Dispersion Danger Cone */}
+                <div
+                  className="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-700"
+                  style={{ transform: `rotate(${downwindAngle}deg)` }}
+                >
+                  <div
+                    className="w-0 h-0 border-x-[50px] border-x-transparent border-t-[140px] border-t-rose-600/30 filter blur-sm"
+                    style={{ transform: 'translateY(-70px)' }}
+                  />
+                  <div
+                    className="w-0 h-0 border-x-[35px] border-x-transparent border-t-[130px] border-t-rose-500/40 absolute"
+                    style={{ transform: 'translateY(-65px)' }}
+                  />
+                </div>
+
+                {/* Center Core HUD */}
+                <div className="relative z-20 w-20 h-20 rounded-full bg-[#0a1813] border-2 border-amber-400 shadow-inner flex flex-col items-center justify-center text-center p-1">
+                  <Wind className="w-4 h-4 text-amber-400 animate-pulse mb-0.5" />
+                  <div className="text-xs sm:text-sm font-black font-mono text-white leading-tight">
+                    {activeWindCardinal}
+                  </div>
+                  <div className="text-[11px] font-bold font-mono text-amber-400 leading-none">
+                    {activeWindSpeed} <span className="text-[8px] font-normal text-stone-300">MPH</span>
+                  </div>
+                  <div className="text-[8px] font-mono text-stone-400 mt-0.5">
+                    {activeWindDirection}°
+                  </div>
+                </div>
+              </div>
+
+              <div className="absolute bottom-3 left-3 bg-[#111d18]/90 border border-[#274035] rounded-lg p-2 text-[10px] space-y-1">
+                <div className="font-mono text-stone-300 font-bold uppercase text-[9px]">Scent Vector Legend</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-rose-600/60" />
+                  <span className="text-stone-300">Downwind Scent Drift Cone</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-full bg-emerald-600" />
+                  <span className="text-stone-300">Upwind Scent-Safe Buffer</span>
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Scent Cones Mode Switcher */}
-          {viewMode === 'aerial' && (
-            <button
-              onClick={() => setConeMode(coneMode === 'selected' ? 'all' : 'selected')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs border transition-all ${
-                coneMode === 'all'
-                  ? 'bg-rose-950/80 text-rose-300 border-rose-700/80'
-                  : 'bg-[#182621] text-stone-300 border-[#2b443a] hover:border-stone-500'
-              }`}
-              title="Toggle between single stand cone or showing all property scent cones"
-            >
-              <Radio className="w-3 h-3 text-rose-400" />
-              <span>{coneMode === 'all' ? 'All Cones Active' : 'Single Cone'}</span>
-            </button>
-          )}
+          {/* RIGHT SIDE PANEL: LIVE / PREVIEW PARCEL WIND INTELLIGENCE */}
+          <div className="lg:col-span-5 p-4 sm:p-5 flex flex-col justify-between bg-[#111c18]">
+            <div className="space-y-4">
+              {/* Property Header */}
+              <div className="flex items-start justify-between border-b border-[#243932] pb-3 gap-2">
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold">
+                      {isPreviewing ? `Forecast Vector (${selectedHour?.hourLabel})` : 'Live Parcel Wind Vector'}
+                    </span>
+                  </div>
+                  <h4 className="text-base font-bold text-stone-100 mt-1">
+                    {location?.name || 'Hunting Unit'}, MI Parcel Intelligence
+                  </h4>
+                  <p className="text-xs text-stone-300 mt-0.5">
+                    {isTustin
+                      ? 'Osceola Co. • Carey & Janke 160th Ave Tract'
+                      : isLeRoy
+                      ? 'Osceola Co. • Bear Lake & Cadillac Forest Tract'
+                      : isRosebush
+                      ? 'Isabella Co. • Feinaur Family Chippewa River Tract'
+                      : location?.acreage || 'Whitetail Hunting Unit'}
+                  </p>
+                </div>
 
-          <div className="flex items-center gap-1.5 bg-[#182621] px-2.5 py-1 rounded-xl border border-[#2b443a] text-xs">
-            <Wind className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-            <span className="font-mono font-bold text-stone-200">
-              {weather.windSpeed} mph {weather.windCardinal}
-            </span>
+                <div className="text-right shrink-0">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-950 text-amber-300 border border-amber-700 shadow-md">
+                    <Wind className="w-4 h-4 text-amber-400 animate-pulse" />
+                    <span>{activeWindCardinal} {activeWindSpeed} mph</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* 4-Stat Live Telemetry Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
+                  <span className="text-[10px] font-mono text-stone-400 block uppercase">Heading</span>
+                  <span className="text-sm font-mono font-bold text-amber-400">
+                    {activeWindCardinal} ({activeWindDirection}°)
+                  </span>
+                </div>
+                <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
+                  <span className="text-[10px] font-mono text-stone-400 block uppercase">Speed</span>
+                  <span className="text-sm font-mono font-bold text-stone-100">
+                    {activeWindSpeed} <span className="text-[10px] text-stone-400 font-normal">mph</span>
+                  </span>
+                </div>
+                <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
+                  <span className="text-[10px] font-mono text-stone-400 block uppercase">Barometer</span>
+                  <span className="text-sm font-mono font-bold text-emerald-400">
+                    {activePressure} <span className="text-[10px] text-stone-400 font-normal">inHg</span>
+                  </span>
+                </div>
+                <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
+                  <span className="text-[10px] font-mono text-stone-400 block uppercase">Temp</span>
+                  <span className="text-sm font-mono font-bold text-stone-100">
+                    {activeTemp}°F
+                  </span>
+                </div>
+              </div>
+
+              {/* Scent Dispersion Drift Path */}
+              <div className="space-y-1">
+                <div className="text-[10px] font-mono uppercase text-amber-400 font-bold flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Wind className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Scent Drift Corridor</span>
+                  </span>
+                  <span className="text-rose-400 text-[10px] font-bold">
+                    Carrying: {parcelAnalysis.driftDirection}
+                  </span>
+                </div>
+                <p className="text-xs text-stone-200 bg-[#172621] p-3 rounded-xl border border-[#294237] leading-relaxed">
+                  {parcelAnalysis.detail}
+                </p>
+              </div>
+
+              {/* Thermal Drafts & Topography */}
+              <div className="space-y-1">
+                <div className="text-[10px] font-mono uppercase text-stone-400 font-bold flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Terrain & Thermal Draft Dynamics</span>
+                </div>
+                <p className="text-xs text-stone-300 bg-[#131f1a] p-2.5 rounded-lg border border-[#20332c] leading-relaxed">
+                  {parcelAnalysis.thermals}
+                </p>
+              </div>
+
+              {/* Stealth Access Route */}
+              <div className="space-y-1">
+                <div className="text-[10px] font-mono uppercase text-emerald-400 font-bold flex items-center gap-1">
+                  <Navigation className="w-3 h-3" />
+                  <span>Recommended Stealth Ingress Route</span>
+                </div>
+                <p className="text-xs text-stone-300 bg-[#14201c] p-2.5 rounded-lg border border-[#20332c] leading-relaxed">
+                  {parcelAnalysis.accessAdvice}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
-        {/* VIEW 1: AERIAL PROPERTY MAP (Rosebush, MI with uploaded parcel photo) */}
-        {viewMode === 'aerial' && hasAerialMap ? (
-          <div className="lg:col-span-7 bg-[#0a120f] min-h-[440px] p-2 sm:p-4 flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-r border-[#233830] relative overflow-hidden">
-            {/* Interactive Aerial Satellite Map Container */}
-            <div
-              style={{ aspectRatio: '1012 / 1307' }}
-              className="relative w-full max-w-sm sm:max-w-md rounded-2xl overflow-hidden border border-[#2e4c41] shadow-2xl bg-black select-none"
-            >
-              {/* Actual Uploaded Satellite Aerial Photo */}
-              <img
-                src={propertyAerialPhoto}
-                alt={`${location?.name || 'Rosebush'} Property Satellite Map`}
-                className="w-full h-full object-cover"
-              />
-
-              {/* Floating Prevailing Wind Vector & Compass Overlay */}
-              <div className="absolute top-2.5 right-2.5 z-20 bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] rounded-xl p-2 flex flex-col items-center shadow-lg">
-                <span className="text-[9px] font-mono font-bold text-amber-400">N</span>
-                <div className="w-6 h-6 relative my-0.5">
-                  <div
-                    className="w-full h-full transition-transform duration-700"
-                    style={{ transform: `rotate(${windAngle}deg)` }}
-                  >
-                    <div className="w-0.5 h-6 bg-gradient-to-b from-rose-500 to-amber-400 mx-auto" />
-                    <div className="w-0 h-0 border-x-4 border-x-transparent border-b-6 border-b-rose-500 absolute -top-1 left-1/2 -translate-x-1/2" />
-                  </div>
-                </div>
-                <span className="text-[8px] font-mono text-stone-300">
-                  {weather.windSpeed}m {weather.windCardinal}
-                </span>
-              </div>
-
-              {/* Property Identification Banner & Fullscreen Zoom trigger */}
-              <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5">
-                <div className="bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] px-2.5 py-1 rounded-lg text-[10px] text-stone-200 font-mono shadow-md flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                  <span>{location?.name || 'Rosebush'} • {standSpots.length} Interactive Icons</span>
-                </div>
-                <button
-                  onClick={() => setIsZoomModalOpen(true)}
-                  aria-label="View full photo"
-                  className="bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] p-1.5 rounded-lg text-amber-400 hover:text-white hover:bg-amber-600 transition-colors shadow-md"
-                  title="Expand Full Photo"
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              {/* ALL SCENT CONES (If Cone Mode === 'all') */}
-              {coneMode === 'all' &&
-                standSpots.map((stand) => {
-                  if (stand.id === selectedStand?.id) return null; // rendered below with highlight
-                  const evalResult = evaluateStandWind(stand);
-                  const coneColor =
-                    evalResult.status === 'Ideal'
-                      ? 'border-t-emerald-500/25'
-                      : evalResult.status === 'Marginal'
-                      ? 'border-t-amber-500/25'
-                      : 'border-t-rose-600/35';
-
-                  return (
-                    <div
-                      key={`all-cone-${stand.id}`}
-                      className="absolute pointer-events-none transition-all duration-700 z-10"
-                      style={{
-                        left: `${stand.x}%`,
-                        top: `${stand.y}%`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                    >
-                      <div
-                        className="relative w-0 h-0"
-                        style={{ transform: `rotate(${downwindAngle}deg)` }}
-                      >
-                        <div
-                          className={`w-0 h-0 border-x-[24px] border-x-transparent border-t-[90px] ${coneColor} filter blur-[1px]`}
-                          style={{ transform: 'translate(-50%, -100%)' }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-
-              {/* SELECTED STAND SCENT CONE (Highlighted) */}
-              {selectedStand && (
-                <div
-                  className="absolute pointer-events-none transition-all duration-700 z-15"
-                  style={{
-                    left: `${selectedStand.x}%`,
-                    top: `${selectedStand.y}%`,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                >
-                  <div
-                    className="relative w-0 h-0"
-                    style={{ transform: `rotate(${downwindAngle}deg)` }}
-                  >
-                    {/* Outer ambient blur scent plume */}
-                    <div
-                      className="w-0 h-0 border-x-[48px] border-x-transparent border-t-[145px] border-t-rose-600/35 filter blur-[2px]"
-                      style={{ transform: 'translate(-50%, -100%)' }}
-                    />
-                    {/* Core intense thermal scent plume */}
-                    <div
-                      className="w-0 h-0 border-x-[32px] border-x-transparent border-t-[130px] border-t-rose-500/45 absolute"
-                      style={{ transform: 'translate(-50%, -100%)' }}
-                    />
-                    {/* Downwind vector indicator dot */}
-                    <div
-                      className="w-2 h-2 rounded-full bg-rose-400 absolute animate-ping"
-                      style={{ transform: 'translate(-50%, -75px)' }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* ALL MAP ICONS: CLICKABLE WITH DYNAMIC WIND SAFETY EVALUATION */}
-              {standSpots.map((stand, idx) => {
-                const evalResult = evaluateStandWind(stand);
-                const isSelected = selectedStand?.id === stand.id;
-
-                const statusColor =
-                  evalResult.status === 'Ideal'
-                    ? 'border-emerald-400 bg-emerald-600/90 text-white shadow-emerald-950/80'
-                    : evalResult.status === 'Marginal'
-                    ? 'border-amber-400 bg-amber-600/90 text-white shadow-amber-950/80'
-                    : 'border-rose-400 bg-rose-700/90 text-white shadow-rose-950/80';
-
-                return (
-                  <button
-                    key={stand.id}
-                    onClick={() => setSelectedStand(stand)}
-                    style={{
-                      left: `${stand.x}%`,
-                      top: `${stand.y}%`,
-                      transform: 'translate(-50%, -50%)',
-                    }}
-                    aria-label={`${stand.name} - ${evalResult.status} Wind`}
-                    className={`absolute z-30 flex items-center justify-center transition-all cursor-pointer group focus:outline-none ${
-                      isSelected
-                        ? 'scale-125 z-40'
-                        : 'hover:scale-115'
-                    }`}
-                  >
-                    {/* Animated Pulsing Ring for Selected Spot */}
-                    {isSelected && (
-                      <span className="absolute -inset-2 rounded-full bg-amber-400/30 animate-ping pointer-events-none" />
-                    )}
-
-                    {/* Circular Interactive Badge placed over the pin */}
-                    <div
-                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full border-2 flex items-center justify-center shadow-lg transition-all ${statusColor} ${
-                        isSelected
-                          ? 'ring-4 ring-amber-300 ring-offset-2 ring-offset-black scale-105'
-                          : 'group-hover:ring-2 group-hover:ring-white/70'
-                      }`}
-                    >
-                      {getSpotIcon(stand)}
-                    </div>
-
-                    {/* Wind Safety Status Pill Indicator */}
-                    <span
-                      className={`absolute -top-2 -right-2 w-3.5 h-3.5 rounded-full border border-black flex items-center justify-center text-[8px] font-bold shadow-md ${
-                        evalResult.status === 'Ideal'
-                          ? 'bg-emerald-400 text-black'
-                          : evalResult.status === 'Marginal'
-                          ? 'bg-amber-400 text-black'
-                          : 'bg-rose-500 text-white'
-                      }`}
-                      title={`${evalResult.status} Wind`}
-                    >
-                      {evalResult.status === 'Ideal' ? '✓' : evalResult.status === 'Marginal' ? '!' : '✕'}
-                    </span>
-
-                    {/* Stand Label Tooltip Banner */}
-                    <div
-                      className={`absolute -bottom-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[9px] font-mono font-bold whitespace-nowrap shadow-xl border transition-all pointer-events-none ${
-                        isSelected
-                          ? 'bg-[#0f1915] text-amber-300 border-amber-500/80 opacity-100 z-50 scale-105'
-                          : 'bg-[#0f1915]/90 text-stone-200 border-[#284036] opacity-0 group-hover:opacity-100'
-                      }`}
-                    >
-                      #{idx + 1} {stand.name.split(' ')[0]} ({evalResult.status})
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Bottom Status Counter Bar */}
-            <div className="mt-2.5 bg-[#121f1a] border border-[#223930] rounded-xl px-3 py-1.5 flex flex-wrap items-center justify-between w-full max-w-sm sm:max-w-md text-[10px] font-mono gap-1.5 shadow-sm">
-              <span className="text-stone-300 font-semibold">
-                Available Spots: <span className="text-white">{stats.total} Total</span>
+      {/* ========================================================= */}
+      {/* SECTION 2: HOURLY WIND FORECAST & DIRECTION SCRUBBER      */}
+      {/* ========================================================= */}
+      <div className="bg-[#111a17] border border-[#233830] rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+        {/* Forecast Header & Quick Filters */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#233830] pb-3.5">
+          <div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-emerald-400" />
+              <h4 className="font-bold text-sm text-stone-100">
+                Hourly Wind Direction & Velocity Forecast
+              </h4>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+                Interactive Scent Scrubber
               </span>
-              <div className="flex items-center gap-2.5">
-                <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" /> {stats.ideal} Ideal
-                </span>
-                <span className="flex items-center gap-1 text-amber-400 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" /> {stats.marginal} Marginal
-                </span>
-                <span className="flex items-center gap-1 text-rose-400 font-bold">
-                  <span className="w-2 h-2 rounded-full bg-rose-600" /> {stats.compromised} Caution
-                </span>
-              </div>
             </div>
+            <p className="text-xs text-stone-400 mt-0.5">
+              Tap any hour to simulate that hour's wind direction and downwind scent cone on the map above.
+            </p>
           </div>
-        ) : (
-          /* VIEW 2: TACTICAL RADAR COMPASS */
-          <div className="lg:col-span-7 bg-[#0c1512] min-h-[360px] sm:min-h-[420px] p-3 sm:p-6 relative flex items-center justify-center border-b lg:border-b-0 lg:border-r border-[#233830] overflow-hidden">
-            {/* Radar Circles */}
-            <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-full border border-[#1e342c] flex items-center justify-center shrink-0">
-              <div className="w-50 h-50 sm:w-56 sm:h-56 rounded-full border border-[#1b2f27] flex items-center justify-center">
-                <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full border border-[#162922] flex items-center justify-center">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border border-[#14241e]" />
-                </div>
-              </div>
 
-              {/* Crosshairs */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="w-full h-[1px] bg-[#1a3028]" />
-                <div className="h-full w-[1px] bg-[#1a3028] absolute" />
-              </div>
+          {/* Time Filter Buttons */}
+          <div className="flex items-center gap-1.5 p-1 bg-[#14221d] rounded-xl border border-[#273e34]">
+            <button
+              onClick={() => setTimeFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                timeFilter === 'all'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-stone-400 hover:text-stone-200'
+              }`}
+            >
+              All 24 Hours
+            </button>
+            <button
+              onClick={() => setTimeFilter('morning')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                timeFilter === 'morning'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-stone-400 hover:text-stone-200'
+              }`}
+            >
+              <Sunrise className="w-3.5 h-3.5" />
+              <span>Morning Sit (5-11 AM)</span>
+            </button>
+            <button
+              onClick={() => setTimeFilter('evening')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                timeFilter === 'evening'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'text-stone-400 hover:text-stone-200'
+              }`}
+            >
+              <Sunset className="w-3.5 h-3.5" />
+              <span>Evening Sit (3-9 PM)</span>
+            </button>
+          </div>
+        </div>
 
-              {/* Compass Cardinal Labels */}
-              <span className="absolute top-2 text-[11px] font-mono font-bold text-amber-400">N</span>
-              <span className="absolute bottom-2 text-[11px] font-mono font-bold text-stone-400">S</span>
-              <span className="absolute right-2 text-[11px] font-mono font-bold text-stone-400">E</span>
-              <span className="absolute left-2 text-[11px] font-mono font-bold text-stone-400">W</span>
-
-              {/* Scent Dispersion Danger Cone */}
-              <div
-                className="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-700"
-                style={{ transform: `rotate(${downwindAngle}deg)` }}
-              >
-                <div
-                  className="w-0 h-0 border-x-[50px] border-x-transparent border-t-[140px] border-t-rose-600/30 filter blur-sm"
-                  style={{ transform: 'translateY(-70px)' }}
-                />
-                <div
-                  className="w-0 h-0 border-x-[35px] border-x-transparent border-t-[130px] border-t-rose-500/40 absolute"
-                  style={{ transform: 'translateY(-65px)' }}
-                />
-              </div>
-
-              {/* Center Hunter Stand Marker */}
-              <div className="absolute z-20 w-8 h-8 rounded-full bg-amber-600/90 border-2 border-white flex items-center justify-center shadow-lg shadow-amber-950">
-                <Crosshair className="w-4 h-4 text-white" />
-              </div>
-
-              {/* Stands Pinned around Terrain */}
-              {standSpots.map((stand, idx) => {
-                const evalResult = evaluateStandWind(stand);
-                const angleRad = ((stand.x * 3.6 - 90) * Math.PI) / 180;
-                const radius = 105;
-                const left = 50 + (radius * Math.cos(angleRad)) / 1.6;
-                const top = 50 + (radius * Math.sin(angleRad)) / 1.6;
-                const isSelected = selectedStand?.id === stand.id;
-
-                return (
-                  <button
-                    key={stand.id}
-                    onClick={() => setSelectedStand(stand)}
-                    style={{ left: `${left}%`, top: `${top}%` }}
-                    className={`absolute z-30 -translate-x-1/2 -translate-y-1/2 p-1.5 rounded-full border-2 transition-all group ${
-                      isSelected
-                        ? 'scale-125 ring-4 ring-amber-400/50 shadow-xl'
-                        : 'hover:scale-110 shadow-md'
-                    } ${
-                      evalResult.status === 'Ideal'
-                        ? 'bg-emerald-600 border-white text-white'
-                        : evalResult.status === 'Marginal'
-                        ? 'bg-amber-600 border-white text-white'
-                        : 'bg-rose-700 border-white text-white'
-                    }`}
-                    title={`${stand.name}: ${evalResult.status}`}
-                  >
-                    <MapPin className="w-3.5 h-3.5" />
-                    <span className="absolute top-6 left-1/2 -translate-x-1/2 bg-[#0c1512] border border-[#274035] text-[9px] font-mono px-1.5 py-0.5 rounded text-stone-200 whitespace-nowrap shadow-md">
-                      #{idx + 1} {stand.name.split(' ')[0]}
-                    </span>
-                  </button>
-                );
-              })}
+        {/* Tactical Wind Shift Alert Banner if wind shifts >= 45 degrees */}
+        {windShiftInfo && (
+          <div className="bg-amber-950/70 border border-amber-600/70 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs shadow-md">
+            <div className="flex items-center gap-2 text-amber-200">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong className="text-white">Noticeable Wind Shift Detected:</strong> Direction veers to{' '}
+                <strong className="text-amber-300 font-mono">
+                  {windShiftInfo.windCardinal} ({windShiftInfo.windDirection}°) at {windShiftInfo.hourLabel}
+                </strong>
+                . Scent will swing across opposite timber ridges.
+              </span>
             </div>
-
-            <div className="absolute bottom-3 left-3 bg-[#111d18]/90 border border-[#274035] rounded-lg p-2 text-[10px] space-y-1">
-              <div className="font-mono text-stone-300 font-bold uppercase text-[9px]">Scent Cone Legend</div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-rose-600/60" />
-                <span className="text-stone-300">Downwind Scent Cone</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-emerald-600" />
-                <span className="text-stone-300">Favorable Wind</span>
-              </div>
-            </div>
+            <button
+              onClick={() => setSelectedHour(windShiftInfo)}
+              className="text-[11px] font-bold text-amber-300 hover:text-white underline font-mono"
+            >
+              Preview {windShiftInfo.hourLabel} Shift →
+            </button>
           </div>
         )}
 
-        {/* Selected Stand Tactical Assessment Panel */}
-        <div className="lg:col-span-5 p-4 sm:p-5 flex flex-col justify-between bg-[#111c18]">
-          {selectedStand ? (
-            (() => {
-              const evalResult = evaluateStandWind(selectedStand);
+        {/* 24-Hour Horizontal Scrollable Card Strip */}
+        <div className="relative">
+          <div className="flex items-center gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-[#253d33] scrollbar-track-transparent">
+            {filteredHourlyData.map((hour, idx) => {
+              const isSelected = selectedHour?.time === hour.time;
+              const isCurrent = idx === 0 && !selectedHour;
+
+              // Color based on velocity
+              const speedColor =
+                hour.windSpeed >= 15
+                  ? 'text-rose-400'
+                  : hour.windSpeed >= 9
+                  ? 'text-amber-400'
+                  : 'text-emerald-400';
+
               return (
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between border-b border-[#243932] pb-3 gap-2">
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`w-2.5 h-2.5 rounded-full ${
-                            evalResult.status === 'Ideal'
-                              ? 'bg-emerald-400'
-                              : evalResult.status === 'Marginal'
-                              ? 'bg-amber-400'
-                              : 'bg-rose-500'
-                          } animate-ping`}
-                        />
-                        <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold">
-                          {getSpotLabel(selectedStand)} Assessment
-                        </span>
-                      </div>
-                      <h4 className="text-base font-bold text-stone-100 mt-1">{selectedStand.name}</h4>
-                      <div className="text-xs text-stone-300 mt-1 flex flex-wrap items-center gap-2">
-                        <span className="capitalize px-2 py-0.5 rounded bg-[#162721] border border-[#294338] text-[11px] text-amber-300 font-medium">
-                          {getSpotLabel(selectedStand)}
-                        </span>
-                        <span>•</span>
-                        <span className="capitalize text-emerald-300 font-medium font-mono text-[11px]">
-                          Best Time: {selectedStand.bestTime.replace('_', ' ')}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-md ${
-                          evalResult.status === 'Ideal'
-                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
-                            : evalResult.status === 'Marginal'
-                            ? 'bg-amber-950 text-amber-300 border border-amber-700'
-                            : 'bg-rose-950 text-rose-300 border border-rose-700'
-                        }`}
-                      >
-                        {evalResult.status === 'Ideal' ? (
-                          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                        ) : evalResult.status === 'Marginal' ? (
-                          <AlertTriangle className="w-4 h-4 text-amber-400" />
-                        ) : (
-                          <ShieldAlert className="w-4 h-4 text-rose-400" />
-                        )}
-                        <span>{evalResult.status} Wind</span>
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Wind Direction Compatibility */}
-                  <div className="bg-[#15231e] p-3 rounded-xl border border-[#273d34] space-y-2">
-                    <div className="flex items-center justify-between text-[10px] font-mono text-stone-400 uppercase">
-                      <span>Preferred Wind Directions:</span>
-                      <span className="text-amber-400 font-bold">Active: {weather.windCardinal}</span>
-                    </div>
-                    <div className="grid grid-cols-8 gap-1 text-center">
-                      {['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'].map((dir) => {
-                        const isDirPreferred = selectedStand.windDirectionPreferred.includes(dir);
-                        const isCurrent = weather.windCardinal === dir;
-                        return (
-                          <div
-                            key={dir}
-                            className={`py-1 rounded text-xs font-mono font-bold transition-all ${
-                              isCurrent && isDirPreferred
-                                ? 'bg-emerald-600 text-white ring-2 ring-emerald-300 shadow-md scale-105'
-                                : isDirPreferred
-                                ? 'bg-[#1e342b] text-emerald-300 border border-emerald-700/50'
-                                : isCurrent
-                                ? 'bg-rose-900 text-rose-200 border border-rose-600 ring-1 ring-rose-400'
-                                : 'bg-[#131c19] text-stone-500'
-                            }`}
-                          >
-                            {dir}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Tactical Scent Reason */}
-                  <div className="space-y-1">
-                    <div className="text-[10px] font-mono uppercase text-amber-400 font-bold flex items-center gap-1">
-                      <Wind className="w-3.5 h-3.5" />
-                      <span>Scent Dispersion Dynamics</span>
-                    </div>
-                    <p className="text-xs text-stone-200 bg-[#172621] p-3 rounded-xl border border-[#294237] leading-relaxed">
-                      {evalResult.reason}
-                    </p>
-                  </div>
-
-                  {/* Spot Description & Strategy */}
-                  <div className="space-y-1">
-                    <div className="text-[10px] font-mono uppercase text-stone-400 font-bold">
-                      Terrain & Tactical Overview
-                    </div>
-                    <p className="text-xs text-stone-300 bg-[#131f1a] p-2.5 rounded-lg border border-[#20332c] leading-relaxed">
-                      {selectedStand.description}
-                    </p>
-                  </div>
-
-                  {/* Ingress / Egress Stealth Advice */}
-                  <div className="space-y-1">
-                    <div className="text-[10px] font-mono uppercase text-emerald-400 font-bold flex items-center gap-1">
-                      <Navigation className="w-3 h-3" />
-                      <span>Stealth Ingress & Egress Route</span>
-                    </div>
-                    <p className="text-xs text-stone-300 bg-[#14201c] p-2.5 rounded-lg border border-[#20332c] leading-relaxed">
-                      Approach keeping the prevailing {weather.windCardinal} wind in your face or cross-shoulder.
-                      Ascend or settle into position at least 45 minutes prior to first legal shooting light.
-                    </p>
-                  </div>
-                </div>
-              );
-            })()
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-stone-400 text-xs">
-              Select any icon on the property map to inspect wind and scent cones.
-            </div>
-          )}
-
-          {/* All Spots Quick Selector Grid */}
-          <div className="mt-4 pt-3 border-t border-[#233830]">
-            <div className="flex items-center justify-between text-[10px] font-mono uppercase text-stone-400 mb-1.5">
-              <span>All Property Icons ({standSpots.length})</span>
-              <span className="text-stone-400 text-[9px]">Tap to inspect</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto pr-1">
-              {standSpots.map((stand, i) => {
-                const evalResult = evaluateStandWind(stand);
-                const isSelected = selectedStand?.id === stand.id;
-                return (
-                  <button
-                    key={stand.id}
-                    onClick={() => setSelectedStand(stand)}
-                    className={`text-left p-1.5 rounded-lg border text-[11px] transition-all flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'bg-amber-600 text-white border-amber-400 font-semibold shadow-md'
-                        : 'bg-[#15231e] text-stone-300 border-[#273d34] hover:border-amber-600/50'
-                    }`}
-                  >
+                <button
+                  key={hour.time}
+                  onClick={() => {
+                    // Toggle preview on click
+                    if (isSelected) {
+                      setSelectedHour(null);
+                    } else {
+                      setSelectedHour(hour);
+                    }
+                  }}
+                  className={`flex flex-col items-center justify-between min-w-[82px] sm:min-w-[92px] p-2.5 rounded-2xl border transition-all shrink-0 cursor-pointer text-left select-none ${
+                    isSelected
+                      ? 'bg-amber-950/80 border-amber-400 ring-2 ring-amber-400/60 shadow-xl scale-105 z-10'
+                      : isCurrent
+                      ? 'bg-[#162720] border-emerald-500/80 hover:bg-[#1a2f26]'
+                      : 'bg-[#131f1a] border-[#22362f] hover:bg-[#182822] hover:border-[#2f4c40]'
+                  }`}
+                >
+                  {/* Hour Tag */}
+                  <div className="flex items-center justify-between w-full mb-1">
                     <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        evalResult.status === 'Ideal'
-                          ? 'bg-emerald-400'
-                          : evalResult.status === 'Marginal'
-                          ? 'bg-amber-400'
-                          : 'bg-rose-500'
+                      className={`text-[11px] font-mono font-bold ${
+                        isSelected
+                          ? 'text-amber-300'
+                          : isCurrent
+                          ? 'text-emerald-400'
+                          : 'text-stone-300'
                       }`}
-                    />
-                    <span className="truncate">
-                      #{i + 1} {stand.name.split(' ')[0]}
+                    >
+                      {hour.hourLabel}
                     </span>
-                  </button>
-                );
-              })}
+                    {isCurrent && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                    )}
+                  </div>
+
+                  {/* Wind Direction Mini-Compass Needle Dial */}
+                  <div className="relative my-2 w-10 h-10 rounded-full border border-[#2b443a] bg-[#0c1613] flex items-center justify-center shadow-inner">
+                    <span className="absolute -top-1 text-[7px] font-mono text-stone-500 font-bold">N</span>
+                    <div
+                      className="w-full h-full flex items-center justify-center transition-transform duration-500"
+                      style={{ transform: `rotate(${hour.windDirection}deg)` }}
+                    >
+                      <div className="relative w-1 h-7">
+                        <div className="w-0 h-0 border-x-3 border-x-transparent border-b-6 border-b-amber-400 absolute -top-1 left-1/2 -translate-x-1/2 drop-shadow-sm" />
+                        <div className="w-0.5 h-full bg-gradient-to-b from-amber-400 to-rose-500 mx-auto rounded-full" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Wind Velocity */}
+                  <div className="text-center w-full">
+                    <div className={`text-xs font-mono font-black ${speedColor} leading-tight`}>
+                      {hour.windSpeed} <span className="text-[9px] font-normal text-stone-400">mph</span>
+                    </div>
+                    <div className="text-[10px] font-mono font-bold text-stone-200 mt-0.5">
+                      {hour.windCardinal}
+                    </div>
+                    <div className="text-[9px] font-mono text-stone-400 leading-none">
+                      {hour.windDirection}°
+                    </div>
+                  </div>
+
+                  {/* Temp & Rain Indicator */}
+                  <div className="w-full pt-2 mt-2 border-t border-[#233830] flex items-center justify-between text-[10px] font-mono text-stone-400">
+                    <span>{hour.temp}°</span>
+                    <span className={hour.rainProb > 25 ? 'text-cyan-400 font-bold' : 'text-stone-500'}>
+                      {hour.rainProb}%
+                    </span>
+                  </div>
+
+                  {/* Click to Preview Action Pill */}
+                  <div className="mt-1 w-full text-center">
+                    <span
+                      className={`text-[8px] font-mono uppercase tracking-wider block py-0.5 rounded ${
+                        isSelected
+                          ? 'bg-amber-400 text-stone-950 font-black'
+                          : 'text-stone-400 hover:text-stone-200'
+                      }`}
+                    >
+                      {isSelected ? 'Active' : 'Preview'}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Tactical Sit Windows (AM vs PM Sit Insights) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2">
+          {/* AM Sit Window Card */}
+          <div className="bg-[#14201c] border border-[#233830] rounded-xl p-3.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                <Sunrise className="w-4 h-4 text-amber-400" />
+                <span>Morning Sit Window (Dawn - 11:00 AM)</span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-[#1a2d26] text-emerald-300 font-mono">
+                AM Thermals
+              </span>
             </div>
+            <p className="text-xs text-stone-300 leading-relaxed">
+              Early morning starts with calm down-valley thermal drainage. As the sun warms ridge slopes around 8:30 AM,
+              thermals reverse into upward drafts. Set up above bedding benches before sunrise to catch rutting bucks scent-checking ridge corridors.
+            </p>
+          </div>
+
+          {/* PM Sit Window Card */}
+          <div className="bg-[#14201c] border border-[#233830] rounded-xl p-3.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                <Sunset className="w-4 h-4 text-amber-400" />
+                <span>Evening Sit Window (3:00 PM - Sunset)</span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-[#1a2d26] text-amber-300 font-mono">
+                PM Settle
+              </span>
+            </div>
+            <p className="text-xs text-stone-300 leading-relaxed">
+              Afternoon winds tend to stabilize horizontally across open fields and clearings. In the final 45 minutes of legal shooting light,
+              cooling shadows trigger downward thermal drainage into bottom marshes and creeks.
+            </p>
           </div>
         </div>
       </div>
 
-      {/* Fullscreen Photo Zoom Modal */}
+      {/* ========================================================= */}
+      {/* FULLSCREEN PHOTO ZOOM MODAL (Clean map with tactical HUD)  */}
+      {/* ========================================================= */}
       {isZoomModalOpen && propertyAerialPhoto && (
         <div
           role="dialog"
@@ -755,10 +968,17 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
               <div>
                 <h4 className="text-sm font-bold text-stone-100 flex items-center gap-1.5">
                   <ImageIcon className="w-4 h-4 text-amber-400" />
-                  <span>{location?.name || 'Rosebush'}, MI Property Satellite Survey</span>
+                  <span>{location?.name || 'Hunting Unit'}, MI Aerial Satellite Survey</span>
                 </h4>
                 <p className="text-[11px] text-stone-400">
-                  Branch Chippewa River tract • All {standSpots.length} stands, blinds, trail cams, and crossings
+                  {isTustin
+                    ? 'Osceola Co. • Carey & Janke 160th Ave Tract'
+                    : isLeRoy
+                    ? 'Osceola Co. • Bear Lake & Cadillac Forest Tract'
+                    : isRosebush
+                    ? 'Isabella Co. • Feinaur Family Chippewa River Tract'
+                    : 'Whitetail Hunting Unit'}{' '}
+                  • Live Tactical Wind Direction Vector
                 </p>
               </div>
               <button
@@ -771,77 +991,79 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
             </div>
 
             {/* Photo Container */}
-            <div className="relative p-2 sm:p-4 bg-black flex items-center justify-center">
+            <div className="relative p-2 sm:p-4 bg-black flex items-center justify-center max-h-[75vh] overflow-y-auto">
               <div
-                style={{ aspectRatio: '1012 / 1307' }}
-                className="relative w-full max-w-lg rounded-xl overflow-hidden shadow-lg select-none"
+                style={{ aspectRatio: mapAspectRatio }}
+                className={`relative w-full ${
+                  isLeRoy ? 'max-w-xs sm:max-w-sm' : isTustin ? 'max-w-md sm:max-w-2xl' : 'max-w-lg'
+                } rounded-xl overflow-hidden shadow-lg select-none`}
               >
                 <img
                   src={propertyAerialPhoto}
-                  alt={`${location?.name || 'Rosebush'} Full Property Map`}
+                  alt={`${location?.name || 'Hunting Unit'} Full Property Map`}
                   className="w-full h-full object-cover"
                 />
 
-                {/* Scent Dispersion Cone Overlay in Modal */}
-                {selectedStand && (
+                {/* Central Tactical Wind Direction Indicator in Modal */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex items-center justify-center">
+                  {/* Scent Dispersion Danger Cone originating from center */}
                   <div
-                    className="absolute pointer-events-none transition-all duration-700 z-10"
-                    style={{
-                      left: `${selectedStand.x}%`,
-                      top: `${selectedStand.y}%`,
-                      transform: 'translate(-50%, -50%)',
-                    }}
+                    className="absolute pointer-events-none transition-transform duration-700"
+                    style={{ transform: `rotate(${downwindAngle}deg)` }}
                   >
                     <div
-                      className="relative w-0 h-0"
-                      style={{ transform: `rotate(${downwindAngle}deg)` }}
+                      className="w-0 h-0 border-x-[55px] border-x-transparent border-t-[190px] border-t-rose-600/40 filter blur-[2px]"
+                      style={{ transform: 'translate(-50%, -100%)' }}
+                    />
+                    <div
+                      className="w-0 h-0 border-x-[36px] border-x-transparent border-t-[170px] border-t-rose-500/50 absolute top-0 left-0"
+                      style={{ transform: 'translate(-50%, -100%)' }}
+                    />
+                    <div
+                      className="w-3 h-3 rounded-full bg-rose-400 absolute animate-ping"
+                      style={{ transform: 'translate(-50%, -100px)' }}
+                    />
+                  </div>
+
+                  {/* 360-Degree Compass Dial HUD Ring */}
+                  <div className="relative w-44 h-44 sm:w-52 sm:h-52 rounded-full border-2 border-amber-400/80 bg-[#07130e]/85 backdrop-blur-md shadow-2xl shadow-black/90 flex items-center justify-center">
+                    <div className="absolute -inset-2 rounded-full border border-amber-400/30 animate-pulse pointer-events-none" />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="w-full h-[1px] bg-emerald-500/30" />
+                      <div className="h-full w-[1px] bg-emerald-500/30 absolute" />
+                    </div>
+                    <span className="absolute top-1.5 text-xs font-mono font-black text-amber-400 tracking-wider">N</span>
+                    <span className="absolute bottom-1.5 text-[11px] font-mono font-bold text-stone-300">S</span>
+                    <span className="absolute right-2 text-[11px] font-mono font-bold text-stone-300">E</span>
+                    <span className="absolute left-2 text-[11px] font-mono font-bold text-stone-300">W</span>
+
+                    {/* Rotating Vector Arrow */}
+                    <div
+                      className="absolute inset-0 flex items-center justify-center transition-transform duration-700 pointer-events-none"
+                      style={{ transform: `rotate(${windAngle}deg)` }}
                     >
-                      <div
-                        className="w-0 h-0 border-x-[50px] border-x-transparent border-t-[150px] border-t-rose-600/40 filter blur-[2px]"
-                        style={{ transform: 'translate(-50%, -100%)' }}
-                      />
-                      <div
-                        className="w-0 h-0 border-x-[32px] border-x-transparent border-t-[135px] border-t-rose-500/50 absolute"
-                        style={{ transform: 'translate(-50%, -100%)' }}
-                      />
+                      <div className="relative w-2 h-34 sm:h-40">
+                        <div className="w-0 h-0 border-x-7 border-x-transparent border-b-12 border-b-amber-400 absolute -top-2.5 left-1/2 -translate-x-1/2 drop-shadow-[0_0_12px_rgba(251,191,36,0.95)]" />
+                        <div className="w-2 h-full bg-gradient-to-b from-amber-400 via-amber-500 to-rose-500 rounded-full mx-auto" />
+                        <div className="w-4 h-0.5 bg-rose-400 rounded-full absolute -bottom-1 left-1/2 -translate-x-1/2" />
+                      </div>
+                    </div>
+
+                    {/* Center Badge */}
+                    <div className="relative z-10 w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#0a1813] border-2 border-amber-400 shadow-inner flex flex-col items-center justify-center text-center p-1">
+                      <Wind className="w-5 h-5 text-amber-400 animate-pulse mb-0.5" />
+                      <div className="text-sm sm:text-base font-black font-mono text-white leading-tight">
+                        {activeWindCardinal}
+                      </div>
+                      <div className="text-xs sm:text-sm font-bold font-mono text-amber-400 leading-none">
+                        {activeWindSpeed} <span className="text-[10px] font-normal text-stone-300">MPH</span>
+                      </div>
+                      <div className="text-[10px] font-mono text-stone-400 mt-0.5">
+                        {activeWindDirection}°
+                      </div>
                     </div>
                   </div>
-                )}
-
-                {/* Overlaid Stand Markers in Modal */}
-                {standSpots.map((stand, idx) => {
-                  const evalResult = evaluateStandWind(stand);
-                  const isSelected = selectedStand?.id === stand.id;
-
-                  const statusColor =
-                    evalResult.status === 'Ideal'
-                      ? 'border-emerald-400 bg-emerald-600 text-white'
-                      : evalResult.status === 'Marginal'
-                      ? 'border-amber-400 bg-amber-600 text-white'
-                      : 'border-rose-400 bg-rose-700 text-white';
-
-                  return (
-                    <button
-                      key={`modal-${stand.id}`}
-                      onClick={() => setSelectedStand(stand)}
-                      style={{
-                        left: `${stand.x}%`,
-                        top: `${stand.y}%`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                      className={`absolute z-30 p-1.5 rounded-full border-2 transition-all cursor-pointer ${
-                        isSelected
-                          ? 'scale-125 ring-4 ring-amber-300 ring-offset-2 ring-offset-black z-40'
-                          : 'hover:scale-115'
-                      } ${statusColor}`}
-                    >
-                      {getSpotIcon(stand)}
-                      <span className="absolute -bottom-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-[#0f1915] text-amber-300 border border-amber-500/70 whitespace-nowrap shadow-lg">
-                        #{idx + 1} {stand.name.split(' ')[0]}
-                      </span>
-                    </button>
-                  );
-                })}
+                </div>
               </div>
             </div>
 
@@ -849,17 +1071,17 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
             <div className="p-3 bg-[#111a17] border-t border-[#233830] text-[11px] text-stone-300 flex flex-wrap items-center justify-between gap-2 font-mono">
               <div className="flex items-center gap-3">
                 <span className="text-amber-400 font-bold">
-                  Wind: {weather.windSpeed} mph {weather.windCardinal}
+                  Wind: {activeWindSpeed} mph {activeWindCardinal} ({activeWindDirection}°)
                 </span>
-                <span className="text-stone-400">
-                  Selected Spot: <span className="text-stone-100 font-semibold">{selectedStand?.name || 'None'}</span>
+                <span className="text-stone-300">
+                  Scent Vector: <span className="text-amber-300 font-semibold">Carrying {activeWindCardinal}</span>
                 </span>
               </div>
               <button
                 onClick={() => setIsZoomModalOpen(false)}
-                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-semibold font-sans transition-colors"
+                className="px-3 py-1 bg-[#1a2d26] hover:bg-[#233d34] text-stone-200 rounded-lg border border-[#2b443a] text-xs font-sans transition-colors"
               >
-                Done
+                Close View
               </button>
             </div>
           </div>
