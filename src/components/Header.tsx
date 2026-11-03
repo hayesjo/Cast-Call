@@ -9,6 +9,9 @@ import {
   ChevronDown,
   X,
   Check,
+  Sunrise,
+  Sunset,
+  Calendar,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -20,6 +23,10 @@ interface HeaderProps {
   onOpenSearch: () => void;
   solunar: SolunarData;
   compositeScore: number;
+  sunrise: string;
+  sunset: string;
+  activeAppDate?: Date;
+  onResetDate?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -31,10 +38,14 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenSearch,
   solunar,
   compositeScore,
+  sunrise,
+  sunset,
+  activeAppDate,
+  onResetDate,
 }) => {
   const [isLocationSheetOpen, setIsLocationSheetOpen] = useState(false);
   // Sheet tab filter: 'auto' (sync with mode) or manual 'hunt' / 'fish'
-  const [sheetFilter, setSheetFilter] = useState<'hunt' | 'fish'>('fish');
+  const [sheetFilter, setSheetFilter] = useState<'hunt' | 'fish'>('hunt');
 
   // Sync sheet tab when drawer opens or mode changes
   const activeDrawerFilter = isLocationSheetOpen ? sheetFilter : mode === 'hunting' ? 'hunt' : 'fish';
@@ -164,21 +175,47 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Quick Sub-Banner: Solunar + Moon Phase Pill */}
-          <div className="py-1.5 flex items-center justify-between text-[11px] border-t border-[#182822] text-stone-300 overflow-x-auto no-scrollbar">
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-sm">{solunar.moon.icon}</span>
-              <span className="text-stone-300 font-medium">
-                {solunar.moon.illumination}% {solunar.moon.phaseName}
-              </span>
+          {/* Top Sub-Banner: Sunrise and Sunset prominently at the top */}
+          <div className="py-1.5 flex items-center justify-between text-[11px] border-t border-[#182822] text-stone-300 overflow-x-auto no-scrollbar gap-2">
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="flex items-center gap-1.5 text-amber-300 font-semibold">
+                <Sunrise className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-[10px] font-mono text-stone-400 uppercase">Rise:</span>
+                <span className="text-xs font-mono font-bold text-amber-200">{sunrise}</span>
+              </div>
+              <span className="text-stone-600 font-mono">•</span>
+              <div className="flex items-center gap-1.5 text-orange-300 font-semibold">
+                <Sunset className="w-3.5 h-3.5 text-orange-400" />
+                <span className="text-[10px] font-mono text-stone-400 uppercase">Set:</span>
+                <span className="text-xs font-mono font-bold text-orange-200">{sunset}</span>
+              </div>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-mono text-stone-400">
-              <span className="text-emerald-400 font-bold">Major 1:</span>
-              <span>{solunar.majorPeriods[0]?.startTime || '7:15 AM'}</span>
-              <span className="text-stone-600">•</span>
-              <span className="text-amber-300 font-bold">Major 2:</span>
-              <span>{solunar.majorPeriods[1]?.startTime || '7:40 PM'}</span>
+            <div className="flex items-center gap-2 shrink-0">
+              {activeAppDate &&
+              (activeAppDate.getDate() !== new Date().getDate() ||
+                activeAppDate.getMonth() !== new Date().getMonth() ||
+                activeAppDate.getFullYear() !== new Date().getFullYear()) ? (
+                <button
+                  onClick={onResetDate}
+                  title="Click to reset forecast to current date"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-950/90 border border-amber-600 text-amber-300 text-[10px] font-mono font-bold hover:bg-amber-900 transition-colors"
+                >
+                  <Calendar className="w-3 h-3 text-amber-400" />
+                  <span>
+                    Forecast: {activeAppDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                  <span className="text-[9px] text-stone-400 underline ml-0.5">Reset</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 text-[10px] font-mono text-stone-400">
+                  <span className="text-emerald-400 font-bold">Major 1:</span>
+                  <span>{solunar.majorPeriods[0]?.startTime || '7:15 AM'}</span>
+                  <span className="text-stone-600">•</span>
+                  <span className="text-amber-300 font-bold">Major 2:</span>
+                  <span>{solunar.majorPeriods[1]?.startTime || '7:40 PM'}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>

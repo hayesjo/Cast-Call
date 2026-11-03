@@ -12,22 +12,21 @@ Loading module from “https://hayesjo.github.io/src/main.tsx” was blocked bec
 ```
 This happens because browsers cannot execute raw TypeScript (`.tsx`) files directly from GitHub. GitHub Pages was trying to serve the unbuilt source files instead of the compiled production bundle (`dist/`).
 
-### Quick Fix (Automated Deployment via GitHub Actions - Recommended):
+### Quick Fix (Automated Deployment via GitHub Actions):
 
-1. **Commit and push** all project files (including `.github/workflows/deploy.yml`) to your GitHub repository:
+1. **Commit and push** the updated files (including `.github/workflows/deploy.yml`, `package-lock.json`, and `.npmrc`):
    ```bash
    git add .
-   git commit -m "Configure GitHub Pages build workflow"
+   git commit -m "Fix GitHub Actions workflow and dependency lock"
    git push origin main
    ```
 
-2. Open your repository on GitHub in your browser.
+2. Open your repository on GitHub (`Cast-Call`).
 3. Click **Settings** (top tabs of the repository).
 4. In the left sidebar, click **Pages** (under the "Code and automation" section).
 5. Under **Build and deployment** > **Source**:
-   - Change from **"Deploy from a branch"** to **"GitHub Actions"**.
-6. That's it! GitHub will now automatically run the workflow, run `npm run build`, and deploy the production bundle (`dist`) directly to `https://hayesjo.github.io`.
-7. You can monitor the deployment under the **Actions** tab in your repository. When the green checkmark appears, your site is live!
+   - Ensure **GitHub Actions** is selected.
+6. Under the **Actions** tab, the workflow will now run without needing a cache lockfile and deploy directly!
 
 ---
 

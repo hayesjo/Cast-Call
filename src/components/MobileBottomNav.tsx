@@ -1,19 +1,19 @@
 import React from 'react';
 import { Mode } from '../types';
-import { Compass, MapPin, Sparkles, BookOpen } from 'lucide-react';
+import { Compass, MapPin, Sparkles, Calendar } from 'lucide-react';
 
 interface MobileBottomNavProps {
   mode: Mode;
-  activeTab: 'forecast' | 'hotspots' | 'advisor' | 'logs';
-  onTabChange: (tab: 'forecast' | 'hotspots' | 'advisor' | 'logs') => void;
-  badgeCounts?: { logs?: number };
+  activeTab: 'forecast' | 'hotspots' | 'advisor' | 'calendar';
+  onTabChange: (tab: 'forecast' | 'hotspots' | 'advisor' | 'calendar') => void;
+  isFutureDateActive?: boolean;
 }
 
 export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
   mode,
   activeTab,
   onTabChange,
-  badgeCounts,
+  isFutureDateActive = false,
 }) => {
   const tabs = [
     {
@@ -36,11 +36,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       highlight: true,
     },
     {
-      id: 'logs' as const,
-      label: 'Log Book',
-      sublabel: 'Past Catches',
-      icon: BookOpen,
-      badge: badgeCounts?.logs,
+      id: 'calendar' as const,
+      label: 'Calendar',
+      sublabel: 'Future Dates',
+      icon: Calendar,
+      badge: isFutureDateActive ? 'DATE' : undefined,
     },
   ];
 
@@ -90,8 +90,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
                   />
                 </div>
 
-                {tab.badge !== undefined && tab.badge > 0 && (
-                  <span className="absolute -top-1 -right-2 bg-emerald-600 text-white text-[9px] font-black rounded-full h-4 min-w-4 px-1 flex items-center justify-center font-mono">
+                {tab.badge && (
+                  <span className="absolute -top-1 -right-2 bg-emerald-600 text-white text-[8px] font-black rounded-full h-3.5 px-1 flex items-center justify-center font-mono">
                     {tab.badge}
                   </span>
                 )}

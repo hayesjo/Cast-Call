@@ -22,7 +22,17 @@ export interface Hotspot {
 export interface StandHotspot {
   id: string;
   name: string;
-  type: 'ridge_funnel' | 'creek_crossing' | 'field_edge' | 'oak_flat' | 'clear_cut' | 'thermal_bedding';
+  type:
+    | 'ridge_funnel'
+    | 'creek_crossing'
+    | 'field_edge'
+    | 'oak_flat'
+    | 'clear_cut'
+    | 'thermal_bedding'
+    | 'trail_camera'
+    | 'box_blind'
+    | 'cabin_access';
+  iconCategory?: 'ladder_stand' | 'box_blind' | 'trail_cam' | 'crossroads' | 'cabin';
   x: number; // 0-100% on terrain map
   y: number; // 0-100% on terrain map
   rating: number; // 0 - 100

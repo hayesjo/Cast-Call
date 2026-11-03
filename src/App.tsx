@@ -18,13 +18,17 @@ import { HuntingForecastView } from './components/HuntingForecastView';
 import { InteractiveLakeMap } from './components/InteractiveLakeMap';
 import { WindScentCompass } from './components/WindScentCompass';
 import { AITacticalAdvisor } from './components/AITacticalAdvisor';
-import { CatchLogView } from './components/CatchLogView';
+import { FutureForecastCalendar } from './components/FutureForecastCalendar';
 import { LocationSearchModal } from './components/LocationSearchModal';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { calculateSolarTimes } from './utils/solarAstronomical';
+import { Loader2, AlertCircle, Calendar } from 'lucide-react';
 
 export default function App() {
-  // Mode: Fishing vs Hunting
-  const [mode, setMode] = useState<Mode>('fishing');
+  // Mode: Hunting is now the default
+  const [mode, setMode] = useState<Mode>('hunting');
+
+  // Active Forecast Date (defaults to today, can be changed via the Calendar tab)
+  const [activeAppDate, setActiveAppDate] = useState<Date>(new Date());
 
   // Locations state: ensure default locations (including LeRoy MI, Rosebush MI, Tustin MI) are always loaded and prioritized
   const [savedLocations, setSavedLocations] = useState<SavedLocation[]>(() => {
@@ -45,13 +49,17 @@ export default function App() {
   });
 
   const [currentLocation, setCurrentLocation] = useState<SavedLocation>(() => {
-    // Default to Lake Mitchell (Cadillac) for fishing or LeRoy MI for hunting
-    const defaultLake = DEFAULT_LOCATIONS.find((l) => l.name.includes('Mitchell'));
-    return defaultLake || DEFAULT_LOCATIONS[0] || savedLocations[0];
+    // Default to LeRoy MI, Rosebush MI, or Tustin MI for hunting
+    const defaultHunt =
+      DEFAULT_LOCATIONS.find((l) => l.name === 'LeRoy') ||
+      DEFAULT_LOCATIONS.find((l) => l.name === 'Rosebush') ||
+      DEFAULT_LOCATIONS.find((l) => l.name === 'Tustin') ||
+      DEFAULT_LOCATIONS.find((l) => l.type === 'hunting_unit');
+    return defaultHunt || DEFAULT_LOCATIONS[0] || savedLocations[0];
   });
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'forecast' | 'hotspots' | 'advisor' | 'logs'>('forecast');
+  const [activeTab, setActiveTab] = useState<'forecast' | 'hotspots' | 'advisor' | 'calendar'>('forecast');
 
   // Catch & Harvest Reports
   const [catchReports, setCatchReports] = useState<CatchReport[]>(() => {
@@ -258,15 +266,37 @@ export default function App() {
     };
   }, [currentLocation]);
 
-  // Solunar calculations
+  // Solar calculation for active date (handles future dates astronomically or live weather for today)
+  const effectiveSolar = useMemo(() => {
+    const today = new Date();
+    const isToday =
+      activeAppDate.getDate() === today.getDate() &&
+      activeAppDate.getMonth() === today.getMonth() &&
+      activeAppDate.getFullYear() === today.getFullYear();
+
+    if (isToday && weather.sunrise && weather.sunset) {
+      return {
+        sunrise: weather.sunrise,
+        sunset: weather.sunset,
+      };
+    }
+
+    const calc = calculateSolarTimes(activeAppDate, currentLocation.lat, currentLocation.lon);
+    return {
+      sunrise: calc.sunrise,
+      sunset: calc.sunset,
+    };
+  }, [activeAppDate, weather.sunrise, weather.sunset, currentLocation.lat, currentLocation.lon]);
+
+  // Solunar calculations for active date
   const solunar = useMemo(() => {
-    return calculateSolunar(new Date(), weather.sunrise, weather.sunset);
-  }, [weather.sunrise, weather.sunset]);
+    return calculateSolunar(activeAppDate, effectiveSolar.sunrise, effectiveSolar.sunset);
+  }, [activeAppDate, effectiveSolar.sunrise, effectiveSolar.sunset]);
 
   // Rut calculations for hunting
   const rut = useMemo(() => {
-    return calculateRutForecast(new Date(), currentLocation.lat);
-  }, [currentLocation.lat]);
+    return calculateRutForecast(activeAppDate, currentLocation.lat);
+  }, [activeAppDate, currentLocation.lat]);
 
   // Bass forecast calculations
   const bassForecast = useMemo<BassForecast>(() => {
@@ -280,9 +310,9 @@ export default function App() {
       windSpeed: weather.windSpeed,
       windCardinal: weather.windCardinal,
       windDirection: weather.windDirection,
-      seasonMonth: new Date().getMonth(),
+      seasonMonth: activeAppDate.getMonth(),
     });
-  }, [bassTuning, weather]);
+  }, [bassTuning, weather, activeAppDate]);
 
   // Composite hunting score
   const huntingCompositeScore = useMemo(() => {
@@ -298,6 +328,16 @@ export default function App() {
 
   // Active composite score based on current mode
   const activeScore = mode === 'fishing' ? bassForecast.compositeBiteScore : huntingCompositeScore;
+
+  // Check if viewing a future date
+  const isFutureDate = useMemo(() => {
+    const today = new Date();
+    return (
+      activeAppDate.getDate() !== today.getDate() ||
+      activeAppDate.getMonth() !== today.getMonth() ||
+      activeAppDate.getFullYear() !== today.getFullYear()
+    );
+  }, [activeAppDate]);
 
   // Handle adding new location from search or manual form
   const handleAddLocation = (newLoc: SavedLocation) => {
@@ -340,10 +380,49 @@ export default function App() {
         onOpenSearch={() => setIsSearchOpen(true)}
         solunar={solunar}
         compositeScore={activeScore}
+        sunrise={effectiveSolar.sunrise}
+        sunset={effectiveSolar.sunset}
+        activeAppDate={activeAppDate}
+        onResetDate={() => setActiveAppDate(new Date())}
       />
 
       {/* Main Content Area with Mobile Bottom Padding */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-28 sm:pb-12">
+        {/* Future Date Indicator Alert */}
+        {isFutureDate && (
+          <div className="mb-4 bg-amber-950/80 border border-amber-600/70 text-amber-200 px-3.5 py-2.5 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs shadow-lg">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                Evaluating Trip Forecast for:{' '}
+                <strong className="text-white">
+                  {activeAppDate.toLocaleDateString('en-US', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })}
+                </strong>
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px]">
+              <button
+                onClick={() => setActiveTab('calendar')}
+                className="underline text-amber-300 hover:text-white font-medium"
+              >
+                Change Date in Calendar
+              </button>
+              <span>•</span>
+              <button
+                onClick={() => setActiveAppDate(new Date())}
+                className="px-2 py-0.5 rounded-lg bg-amber-800 hover:bg-amber-700 text-white font-bold"
+              >
+                Reset to Today
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Loading Indicator for weather change */}
         {isLoadingWeather && (
           <div className="mb-4 bg-emerald-950/60 border border-emerald-800/60 text-emerald-300 text-xs px-3 py-2 rounded-xl flex items-center gap-2 animate-pulse">
@@ -435,13 +514,20 @@ export default function App() {
           />
         )}
 
-        {/* Tab 4: Catch & Harvest Logs */}
-        {activeTab === 'logs' && (
-          <CatchLogView
-            reports={catchReports}
-            currentLocation={currentLocation}
+        {/* Tab 4: Future Forecast Calendar */}
+        {activeTab === 'calendar' && (
+          <FutureForecastCalendar
+            mode={mode}
+            location={currentLocation}
             currentWeather={weather}
-            onAddReport={handleAddReport}
+            activeAppDate={activeAppDate}
+            onSelectDate={(newDate) => {
+              // Date selected in calendar
+            }}
+            onApplyDateToApp={(newDate) => {
+              setActiveAppDate(newDate);
+              setActiveTab('forecast');
+            }}
           />
         )}
       </main>
@@ -458,9 +544,9 @@ export default function App() {
           <div className="flex items-center gap-4 text-[11px] text-stone-500 font-mono">
             <span>Solunar Astronomical Sync</span>
             <span>•</span>
-            <span>Open-Meteo Barometrics</span>
+            <span>NOAA Solar Engine</span>
             <span>•</span>
-            <span>Gemini 3.8 Flash Tactical Engine</span>
+            <span>Photoperiod Rut Progression</span>
           </div>
         </div>
       </footer>
@@ -480,7 +566,7 @@ export default function App() {
           setActiveTab(tab);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
-        badgeCounts={{ logs: catchReports.length }}
+        isFutureDateActive={isFutureDate}
       />
     </div>
   );
