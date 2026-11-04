@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Mode, SavedLocation, WeatherData } from '../types';
 import { calculateSolunar } from '../utils/solunar';
 import { calculateRutForecast } from '../utils/rutCalculator';
@@ -42,6 +42,11 @@ export const FutureForecastCalendar: React.FC<FutureForecastCalendarProps> = ({
 }) => {
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date(activeAppDate));
   const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date(activeAppDate));
+
+  // Keep calendar selection synced with activeAppDate
+  useEffect(() => {
+    setSelectedDate(new Date(activeAppDate));
+  }, [activeAppDate]);
 
   // Determine if selected date is today
   const isSelectedToday = useMemo(() => {
@@ -272,14 +277,10 @@ export const FutureForecastCalendar: React.FC<FutureForecastCalendarProps> = ({
 
             <button
               onClick={() => onApplyDateToApp(selectedDate)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition-all ${
-                isCurrentlyApplied
-                  ? 'bg-emerald-900/60 border border-emerald-500 text-emerald-300 cursor-default'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50'
-              }`}
+              className="px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg transition-all bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/50"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{isCurrentlyApplied ? 'Forecast Applied to App' : 'Apply Date to Entire App'}</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+              <span>View in Tactical Forecast →</span>
             </button>
           </div>
         </div>

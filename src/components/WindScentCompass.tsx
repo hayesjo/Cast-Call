@@ -22,11 +22,13 @@ interface WindScentCompassProps {
   weather: WeatherData;
   standSpots?: StandHotspot[];
   location?: SavedLocation;
+  activeDate?: Date;
 }
 
 export const WindScentCompass: React.FC<WindScentCompassProps> = ({
   weather,
   location,
+  activeDate,
 }) => {
   const [isZoomModalOpen, setIsZoomModalOpen] = useState(false);
   const [selectedHour, setSelectedHour] = useState<HourlyWeatherPoint | null>(null);
@@ -337,9 +339,9 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
   const parcelAnalysis = getParcelScentAnalysis();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* ========================================================= */}
-      {/* SECTION 1: CLEAN TACTICAL MAP & PARCEL SCENT INTELLIGENCE */}
+      {/* SECTION 1: MAP CONTAINER (Clean satellite with semi-transparent compass) */}
       {/* ========================================================= */}
       <div className="bg-[#111a17] border border-[#233830] rounded-2xl overflow-hidden shadow-xl">
         {/* Top Header Bar */}
@@ -349,7 +351,7 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
               <h3 className="font-bold text-sm text-stone-100 flex items-center gap-1.5">
                 <Compass className="w-4 h-4 text-amber-400" />
                 <span>
-                  {location?.name ? `${location.name} Wind & Scent Direction Map` : 'Stand Wind & Scent Direction Map'}
+                  {location?.name ? `${location.name} Wind Direction Map` : 'Stand Wind Direction Map'}
                 </span>
               </h3>
               {isPreviewing ? (
@@ -362,11 +364,18 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
                   Live Wind Direction
                 </span>
               )}
+              {activeDate &&
+                (activeDate.getDate() !== new Date().getDate() ||
+                  activeDate.getMonth() !== new Date().getMonth()) && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-700 font-mono">
+                    Date: {activeDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </span>
+                )}
             </div>
             <p className="text-[11px] text-stone-400 mt-0.5">
               {isPreviewing
-                ? `Simulating forecasted ${activeWindSpeed} mph ${activeWindCardinal} (${activeWindDirection}°) wind vector and downwind scent drift corridor for ${selectedHour?.hourLabel}.`
-                : `High-resolution aerial satellite survey of ${location?.name || 'Hunting Unit'}, MI with real-time tactical wind direction vector and scent drift corridor centered on the property.`}
+                ? `Simulating forecasted ${activeWindSpeed} mph ${activeWindCardinal} (${activeWindDirection}°) wind vector for ${selectedHour?.hourLabel}.`
+                : `High-resolution aerial satellite survey of ${location?.name || 'Hunting Unit'}, MI with tactical semi-transparent wind compass centered on the property.`}
             </p>
           </div>
 
@@ -419,315 +428,181 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-0">
-          {/* VIEW 1: AERIAL PROPERTY MAP (Clean without stand pins) */}
-          {viewMode === 'aerial' && hasAerialMap ? (
-            <div className="lg:col-span-7 bg-[#0a120f] min-h-[440px] p-2 sm:p-4 flex flex-col items-center justify-center border-b lg:border-b-0 lg:border-r border-[#233830] relative overflow-hidden">
-              {/* Interactive Aerial Satellite Map Container */}
-              <div
-                style={{ aspectRatio: mapAspectRatio }}
-                className={`relative w-full ${
-                  isLeRoy
-                    ? 'max-w-[320px] sm:max-w-[360px]'
-                    : isTustin
-                    ? 'max-w-md sm:max-w-xl'
-                    : 'max-w-sm sm:max-w-md'
-                } rounded-2xl overflow-hidden border border-[#2e4c41] shadow-2xl bg-black select-none`}
-              >
-                {/* Actual Uploaded Satellite Aerial Photo */}
-                <img
-                  src={propertyAerialPhoto}
-                  alt={`${location?.name || 'Hunt Property'} Satellite Map`}
-                  className="w-full h-full object-cover"
-                />
+        {/* Map Canvas */}
+        {viewMode === 'aerial' && hasAerialMap ? (
+          <div className="bg-[#0a120f] min-h-[440px] sm:min-h-[500px] p-2 sm:p-5 flex flex-col items-center justify-center relative overflow-hidden">
+            {/* Interactive Aerial Satellite Map Container */}
+            <div
+              style={{ aspectRatio: mapAspectRatio }}
+              className={`relative w-full ${
+                isLeRoy
+                  ? 'max-w-[330px] sm:max-w-[380px]'
+                  : isTustin
+                  ? 'max-w-md sm:max-w-xl'
+                  : 'max-w-sm sm:max-w-md'
+              } rounded-2xl overflow-hidden border border-[#2e4c41] shadow-2xl bg-black select-none`}
+            >
+              {/* Actual Uploaded Satellite Aerial Photo */}
+              <img
+                src={propertyAerialPhoto}
+                alt={`${location?.name || 'Hunt Property'} Satellite Map`}
+                className="w-full h-full object-cover"
+              />
 
-                {/* Floating Prevailing Wind Vector & Compass Overlay */}
-                <div className="absolute top-2.5 right-2.5 z-20 bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] rounded-xl p-2 flex flex-col items-center shadow-lg">
-                  <span className="text-[9px] font-mono font-bold text-amber-400">N</span>
-                  <div className="w-6 h-6 relative my-0.5">
-                    <div
-                      className="w-full h-full transition-transform duration-700"
-                      style={{ transform: `rotate(${windAngle}deg)` }}
-                    >
-                      <div className="w-0.5 h-6 bg-gradient-to-b from-rose-500 to-amber-400 mx-auto" />
-                      <div className="w-0 h-0 border-x-4 border-x-transparent border-b-6 border-b-rose-500 absolute -top-1 left-1/2 -translate-x-1/2" />
-                    </div>
+              {/* Floating Prevailing Wind Vector & Compass Overlay */}
+              <div className="absolute top-2.5 right-2.5 z-20 bg-[#0d1613]/85 backdrop-blur-md border border-[#2a453b] rounded-xl p-2 flex flex-col items-center shadow-lg">
+                <span className="text-[9px] font-mono font-bold text-amber-400">N</span>
+                <div className="w-6 h-6 relative my-0.5">
+                  <div
+                    className="w-full h-full transition-transform duration-700"
+                    style={{ transform: `rotate(${windAngle}deg)` }}
+                  >
+                    <div className="w-0.5 h-6 bg-gradient-to-b from-rose-500 to-amber-400 mx-auto" />
+                    <div className="w-0 h-0 border-x-4 border-x-transparent border-b-6 border-b-rose-500 absolute -top-1 left-1/2 -translate-x-1/2" />
                   </div>
-                  <span className="text-[8px] font-mono text-stone-300">
-                    {activeWindSpeed}m {activeWindCardinal}
+                </div>
+                <span className="text-[8px] font-mono text-stone-300">
+                  {activeWindSpeed}m {activeWindCardinal}
+                </span>
+              </div>
+
+              {/* Property Identification Banner & Fullscreen Zoom trigger */}
+              <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5">
+                <div className="bg-[#0d1613]/85 backdrop-blur-md border border-[#2a453b] px-2.5 py-1 rounded-lg text-[10px] text-stone-200 font-mono shadow-md flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                  <span>
+                    {location?.name || 'Property'} • Wind Vector
                   </span>
                 </div>
-
-                {/* Property Identification Banner & Fullscreen Zoom trigger */}
-                <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5">
-                  <div className="bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] px-2.5 py-1 rounded-lg text-[10px] text-stone-200 font-mono shadow-md flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                    <span>
-                      {location?.name || 'Property'} • Central Wind Vector
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setIsZoomModalOpen(true)}
-                    aria-label="View full photo"
-                    className="bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] p-1.5 rounded-lg text-amber-400 hover:text-white hover:bg-amber-600 transition-colors shadow-md"
-                    title="Expand Full Photo"
-                  >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                {/* CENTRAL TACTICAL WIND DIRECTION INDICATOR (In the middle of the map) */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex items-center justify-center">
-                  {/* Scent Dispersion Drift Cone originating from center */}
-                  <div
-                    className="absolute pointer-events-none transition-transform duration-700"
-                    style={{ transform: `rotate(${downwindAngle}deg)` }}
-                  >
-                    {/* Ambient Scent Cloud */}
-                    <div
-                      className="w-0 h-0 border-x-[52px] border-x-transparent border-t-[160px] border-t-rose-600/35 filter blur-[2px]"
-                      style={{ transform: 'translate(-50%, -100%)' }}
-                    />
-                    {/* Core Thermal Stream */}
-                    <div
-                      className="w-0 h-0 border-x-[34px] border-x-transparent border-t-[145px] border-t-rose-500/50 absolute top-0 left-0"
-                      style={{ transform: 'translate(-50%, -100%)' }}
-                    />
-                    {/* Downwind pulsing particle */}
-                    <div
-                      className="w-2.5 h-2.5 rounded-full bg-rose-400 absolute animate-ping"
-                      style={{ transform: 'translate(-50%, -85px)' }}
-                    />
-                  </div>
-
-                  {/* 360-Degree Compass Dial HUD Ring */}
-                  <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full border-2 border-amber-400/80 bg-[#07130e]/85 backdrop-blur-md shadow-2xl shadow-black/90 flex items-center justify-center">
-                    {/* Outer glow ring */}
-                    <div className="absolute -inset-1.5 rounded-full border border-amber-400/25 animate-pulse pointer-events-none" />
-
-                    {/* Crosshairs */}
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="w-full h-[1px] bg-emerald-500/30" />
-                      <div className="h-full w-[1px] bg-emerald-500/30 absolute" />
-                    </div>
-
-                    {/* Compass Cardinals */}
-                    <span className="absolute top-1 text-[11px] font-mono font-black text-amber-400 tracking-wider">N</span>
-                    <span className="absolute bottom-1 text-[10px] font-mono font-bold text-stone-300">S</span>
-                    <span className="absolute right-1.5 text-[10px] font-mono font-bold text-stone-300">E</span>
-                    <span className="absolute left-1.5 text-[10px] font-mono font-bold text-stone-300">W</span>
-
-                    {/* Compass Ordinals */}
-                    <span className="absolute top-5 right-5 text-[8px] font-mono text-stone-400">NE</span>
-                    <span className="absolute bottom-5 right-5 text-[8px] font-mono text-stone-400">SE</span>
-                    <span className="absolute bottom-5 left-5 text-[8px] font-mono text-stone-400">SW</span>
-                    <span className="absolute top-5 left-5 text-[8px] font-mono text-stone-400">NW</span>
-
-                    {/* Rotating Wind Vector Arrow */}
-                    <div
-                      className="absolute inset-0 flex items-center justify-center transition-transform duration-700 pointer-events-none"
-                      style={{ transform: `rotate(${windAngle}deg)` }}
-                    >
-                      <div className="relative w-1.5 h-28 sm:h-34">
-                        {/* Direction Arrow Head */}
-                        <div className="w-0 h-0 border-x-6 border-x-transparent border-b-10 border-b-amber-400 absolute -top-2 left-1/2 -translate-x-1/2 drop-shadow-[0_0_10px_rgba(251,191,36,0.95)]" />
-                        {/* Arrow Shaft */}
-                        <div className="w-1.5 h-full bg-gradient-to-b from-amber-400 via-amber-500 to-rose-500 rounded-full mx-auto" />
-                        {/* Feather tail */}
-                        <div className="w-3.5 h-0.5 bg-rose-400 rounded-full absolute -bottom-1 left-1/2 -translate-x-1/2" />
-                      </div>
-                    </div>
-
-                    {/* Center Core Display Badge */}
-                    <div className="relative z-10 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#0a1813] border-2 border-amber-400/80 shadow-inner flex flex-col items-center justify-center text-center p-1">
-                      <Wind className="w-4 h-4 text-amber-400 animate-pulse mb-0.5" />
-                      <div className="text-xs sm:text-sm font-black font-mono text-white leading-tight">
-                        {activeWindCardinal}
-                      </div>
-                      <div className="text-[11px] sm:text-xs font-bold font-mono text-amber-400 leading-none">
-                        {activeWindSpeed} <span className="text-[9px] font-normal text-stone-300">MPH</span>
-                      </div>
-                      <div className="text-[9px] font-mono text-stone-400 mt-0.5">
-                        {activeWindDirection}°
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* VIEW 2: TACTICAL RADAR COMPASS */
-            <div className="lg:col-span-7 bg-[#0c1512] min-h-[360px] sm:min-h-[420px] p-3 sm:p-6 relative flex items-center justify-center border-b lg:border-b-0 lg:border-r border-[#233830] overflow-hidden">
-              {/* Radar Circles */}
-              <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-full border border-[#1e342c] flex items-center justify-center shrink-0">
-                <div className="w-50 h-50 sm:w-56 sm:h-56 rounded-full border border-[#1b2f27] flex items-center justify-center">
-                  <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full border border-[#162922] flex items-center justify-center">
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border border-[#14241e]" />
-                  </div>
-                </div>
-
-                {/* Crosshairs */}
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="w-full h-[1px] bg-[#1a3028]" />
-                  <div className="h-full w-[1px] bg-[#1a3028] absolute" />
-                </div>
-
-                {/* Compass Cardinal Labels */}
-                <span className="absolute top-2 text-[11px] font-mono font-bold text-amber-400">N</span>
-                <span className="absolute bottom-2 text-[11px] font-mono font-bold text-stone-400">S</span>
-                <span className="absolute right-2 text-[11px] font-mono font-bold text-stone-400">E</span>
-                <span className="absolute left-2 text-[11px] font-mono font-bold text-stone-400">W</span>
-
-                {/* Scent Dispersion Danger Cone */}
-                <div
-                  className="absolute inset-0 flex items-center justify-center pointer-events-none transition-transform duration-700"
-                  style={{ transform: `rotate(${downwindAngle}deg)` }}
+                <button
+                  onClick={() => setIsZoomModalOpen(true)}
+                  aria-label="View full photo"
+                  className="bg-[#0d1613]/85 backdrop-blur-md border border-[#2a453b] p-1.5 rounded-lg text-amber-400 hover:text-white hover:bg-amber-600 transition-colors shadow-md"
+                  title="Expand Full Photo"
                 >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* CENTRAL TACTICAL WIND DIRECTION INDICATOR (Semi-Transparent HUD in middle of map, NO RED CONE) */}
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex items-center justify-center">
+                {/* 360-Degree Compass Dial HUD Ring - Semi-Transparent */}
+                <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full border-2 border-amber-400/70 bg-[#07130e]/30 backdrop-blur-sm shadow-xl shadow-black/80 flex items-center justify-center">
+                  {/* Outer glow ring */}
+                  <div className="absolute -inset-1 rounded-full border border-amber-400/30 animate-pulse pointer-events-none" />
+
+                  {/* Crosshairs */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-full h-[1px] bg-emerald-400/40" />
+                    <div className="h-full w-[1px] bg-emerald-400/40 absolute" />
+                  </div>
+
+                  {/* Compass Cardinals */}
+                  <span className="absolute top-1 text-[11px] font-mono font-black text-amber-400 tracking-wider drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">N</span>
+                  <span className="absolute bottom-1 text-[10px] font-mono font-bold text-stone-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">S</span>
+                  <span className="absolute right-1.5 text-[10px] font-mono font-bold text-stone-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">E</span>
+                  <span className="absolute left-1.5 text-[10px] font-mono font-bold text-stone-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">W</span>
+
+                  {/* Compass Ordinals */}
+                  <span className="absolute top-5 right-5 text-[8px] font-mono text-stone-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">NE</span>
+                  <span className="absolute bottom-5 right-5 text-[8px] font-mono text-stone-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">SE</span>
+                  <span className="absolute bottom-5 left-5 text-[8px] font-mono text-stone-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">SW</span>
+                  <span className="absolute top-5 left-5 text-[8px] font-mono text-stone-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">NW</span>
+
+                  {/* Rotating Wind Vector Arrow */}
                   <div
-                    className="w-0 h-0 border-x-[50px] border-x-transparent border-t-[140px] border-t-rose-600/30 filter blur-sm"
-                    style={{ transform: 'translateY(-70px)' }}
-                  />
-                  <div
-                    className="w-0 h-0 border-x-[35px] border-x-transparent border-t-[130px] border-t-rose-500/40 absolute"
-                    style={{ transform: 'translateY(-65px)' }}
-                  />
-                </div>
-
-                {/* Center Core HUD */}
-                <div className="relative z-20 w-20 h-20 rounded-full bg-[#0a1813] border-2 border-amber-400 shadow-inner flex flex-col items-center justify-center text-center p-1">
-                  <Wind className="w-4 h-4 text-amber-400 animate-pulse mb-0.5" />
-                  <div className="text-xs sm:text-sm font-black font-mono text-white leading-tight">
-                    {activeWindCardinal}
+                    className="absolute inset-0 flex items-center justify-center transition-transform duration-700 pointer-events-none"
+                    style={{ transform: `rotate(${windAngle}deg)` }}
+                  >
+                    <div className="relative w-1.5 h-28 sm:h-34">
+                      {/* Direction Arrow Head */}
+                      <div className="w-0 h-0 border-x-6 border-x-transparent border-b-10 border-b-amber-400 absolute -top-2 left-1/2 -translate-x-1/2 drop-shadow-[0_0_10px_rgba(251,191,36,0.95)]" />
+                      {/* Arrow Shaft */}
+                      <div className="w-1.5 h-full bg-gradient-to-b from-amber-400 via-amber-500 to-rose-500 rounded-full mx-auto" />
+                      {/* Feather tail */}
+                      <div className="w-3.5 h-0.5 bg-rose-400 rounded-full absolute -bottom-1 left-1/2 -translate-x-1/2" />
+                    </div>
                   </div>
-                  <div className="text-[11px] font-bold font-mono text-amber-400 leading-none">
-                    {activeWindSpeed} <span className="text-[8px] font-normal text-stone-300">MPH</span>
+
+                  {/* Center Core Display Badge - Semi-Transparent */}
+                  <div className="relative z-10 w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-[#0a1813]/40 backdrop-blur-sm border border-amber-400/60 shadow-lg flex flex-col items-center justify-center text-center p-1">
+                    <Wind className="w-4 h-4 text-amber-400 animate-pulse mb-0.5" />
+                    <div className="text-xs sm:text-sm font-black font-mono text-white leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                      {activeWindCardinal}
+                    </div>
+                    <div className="text-[11px] sm:text-xs font-bold font-mono text-amber-400 leading-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                      {activeWindSpeed} <span className="text-[9px] font-normal text-stone-200">MPH</span>
+                    </div>
+                    <div className="text-[9px] font-mono text-stone-300 mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                      {activeWindDirection}°
+                    </div>
                   </div>
-                  <div className="text-[8px] font-mono text-stone-400 mt-0.5">
-                    {activeWindDirection}°
-                  </div>
                 </div>
-              </div>
-
-              <div className="absolute bottom-3 left-3 bg-[#111d18]/90 border border-[#274035] rounded-lg p-2 text-[10px] space-y-1">
-                <div className="font-mono text-stone-300 font-bold uppercase text-[9px]">Scent Vector Legend</div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-full bg-rose-600/60" />
-                  <span className="text-stone-300">Downwind Scent Drift Cone</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-full bg-emerald-600" />
-                  <span className="text-stone-300">Upwind Scent-Safe Buffer</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* RIGHT SIDE PANEL: LIVE / PREVIEW PARCEL WIND INTELLIGENCE */}
-          <div className="lg:col-span-5 p-4 sm:p-5 flex flex-col justify-between bg-[#111c18]">
-            <div className="space-y-4">
-              {/* Property Header */}
-              <div className="flex items-start justify-between border-b border-[#243932] pb-3 gap-2">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold">
-                      {isPreviewing ? `Forecast Vector (${selectedHour?.hourLabel})` : 'Live Parcel Wind Vector'}
-                    </span>
-                  </div>
-                  <h4 className="text-base font-bold text-stone-100 mt-1">
-                    {location?.name || 'Hunting Unit'}, MI Parcel Intelligence
-                  </h4>
-                  <p className="text-xs text-stone-300 mt-0.5">
-                    {isTustin
-                      ? 'Osceola Co. • Carey & Janke 160th Ave Tract'
-                      : isLeRoy
-                      ? 'Osceola Co. • Bear Lake & Cadillac Forest Tract'
-                      : isRosebush
-                      ? 'Isabella Co. • Feinaur Family Chippewa River Tract'
-                      : location?.acreage || 'Whitetail Hunting Unit'}
-                  </p>
-                </div>
-
-                <div className="text-right shrink-0">
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-950 text-amber-300 border border-amber-700 shadow-md">
-                    <Wind className="w-4 h-4 text-amber-400 animate-pulse" />
-                    <span>{activeWindCardinal} {activeWindSpeed} mph</span>
-                  </span>
-                </div>
-              </div>
-
-              {/* 4-Stat Live Telemetry Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
-                  <span className="text-[10px] font-mono text-stone-400 block uppercase">Heading</span>
-                  <span className="text-sm font-mono font-bold text-amber-400">
-                    {activeWindCardinal} ({activeWindDirection}°)
-                  </span>
-                </div>
-                <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
-                  <span className="text-[10px] font-mono text-stone-400 block uppercase">Speed</span>
-                  <span className="text-sm font-mono font-bold text-stone-100">
-                    {activeWindSpeed} <span className="text-[10px] text-stone-400 font-normal">mph</span>
-                  </span>
-                </div>
-                <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
-                  <span className="text-[10px] font-mono text-stone-400 block uppercase">Barometer</span>
-                  <span className="text-sm font-mono font-bold text-emerald-400">
-                    {activePressure} <span className="text-[10px] text-stone-400 font-normal">inHg</span>
-                  </span>
-                </div>
-                <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
-                  <span className="text-[10px] font-mono text-stone-400 block uppercase">Temp</span>
-                  <span className="text-sm font-mono font-bold text-stone-100">
-                    {activeTemp}°F
-                  </span>
-                </div>
-              </div>
-
-              {/* Scent Dispersion Drift Path */}
-              <div className="space-y-1">
-                <div className="text-[10px] font-mono uppercase text-amber-400 font-bold flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <Wind className="w-3.5 h-3.5 text-rose-400" />
-                    <span>Scent Drift Corridor</span>
-                  </span>
-                  <span className="text-rose-400 text-[10px] font-bold">
-                    Carrying: {parcelAnalysis.driftDirection}
-                  </span>
-                </div>
-                <p className="text-xs text-stone-200 bg-[#172621] p-3 rounded-xl border border-[#294237] leading-relaxed">
-                  {parcelAnalysis.detail}
-                </p>
-              </div>
-
-              {/* Thermal Drafts & Topography */}
-              <div className="space-y-1">
-                <div className="text-[10px] font-mono uppercase text-stone-400 font-bold flex items-center gap-1">
-                  <Layers className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Terrain & Thermal Draft Dynamics</span>
-                </div>
-                <p className="text-xs text-stone-300 bg-[#131f1a] p-2.5 rounded-lg border border-[#20332c] leading-relaxed">
-                  {parcelAnalysis.thermals}
-                </p>
-              </div>
-
-              {/* Stealth Access Route */}
-              <div className="space-y-1">
-                <div className="text-[10px] font-mono uppercase text-emerald-400 font-bold flex items-center gap-1">
-                  <Navigation className="w-3 h-3" />
-                  <span>Recommended Stealth Ingress Route</span>
-                </div>
-                <p className="text-xs text-stone-300 bg-[#14201c] p-2.5 rounded-lg border border-[#20332c] leading-relaxed">
-                  {parcelAnalysis.accessAdvice}
-                </p>
               </div>
             </div>
           </div>
-        </div>
+        ) : (
+          /* VIEW 2: TACTICAL RADAR COMPASS (NO RED CONE, Semi-transparent HUD) */
+          <div className="bg-[#0c1512] min-h-[380px] sm:min-h-[440px] p-4 sm:p-6 relative flex items-center justify-center overflow-hidden">
+            {/* Radar Circles */}
+            <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-full border border-[#1e342c] flex items-center justify-center shrink-0">
+              <div className="w-50 h-50 sm:w-56 sm:h-56 rounded-full border border-[#1b2f27] flex items-center justify-center">
+                <div className="w-32 h-32 sm:w-36 sm:h-36 rounded-full border border-[#162922] flex items-center justify-center">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full border border-[#14241e]" />
+                </div>
+              </div>
+
+              {/* Crosshairs */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-full h-[1px] bg-[#1a3028]" />
+                <div className="h-full w-[1px] bg-[#1a3028] absolute" />
+              </div>
+
+              {/* Compass Cardinal Labels */}
+              <span className="absolute top-2 text-[11px] font-mono font-bold text-amber-400">N</span>
+              <span className="absolute bottom-2 text-[11px] font-mono font-bold text-stone-400">S</span>
+              <span className="absolute right-2 text-[11px] font-mono font-bold text-stone-400">E</span>
+              <span className="absolute left-2 text-[11px] font-mono font-bold text-stone-400">W</span>
+
+              {/* Rotating Wind Vector Arrow */}
+              <div
+                className="absolute inset-0 flex items-center justify-center transition-transform duration-700 pointer-events-none"
+                style={{ transform: `rotate(${windAngle}deg)` }}
+              >
+                <div className="relative w-1.5 h-32 sm:h-40">
+                  <div className="w-0 h-0 border-x-6 border-x-transparent border-b-10 border-b-amber-400 absolute -top-2 left-1/2 -translate-x-1/2 drop-shadow-[0_0_10px_rgba(251,191,36,0.95)]" />
+                  <div className="w-1.5 h-full bg-gradient-to-b from-amber-400 via-amber-500 to-rose-500 rounded-full mx-auto" />
+                </div>
+              </div>
+
+              {/* Center Core HUD - Semi-Transparent */}
+              <div className="relative z-20 w-20 h-20 rounded-full bg-[#0a1813]/60 backdrop-blur-sm border-2 border-amber-400/80 shadow-lg flex flex-col items-center justify-center text-center p-1">
+                <Wind className="w-4 h-4 text-amber-400 animate-pulse mb-0.5" />
+                <div className="text-xs sm:text-sm font-black font-mono text-white leading-tight">
+                  {activeWindCardinal}
+                </div>
+                <div className="text-[11px] font-bold font-mono text-amber-400 leading-none">
+                  {activeWindSpeed} <span className="text-[8px] font-normal text-stone-300">MPH</span>
+                </div>
+                <div className="text-[8px] font-mono text-stone-400 mt-0.5">
+                  {activeWindDirection}°
+                </div>
+              </div>
+            </div>
+
+            <div className="absolute bottom-3 left-3 bg-[#111d18]/90 border border-[#274035] rounded-lg p-2 text-[10px] space-y-1">
+              <div className="font-mono text-stone-300 font-bold uppercase text-[9px]">Tactical Legend</div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-amber-400" />
+                <span className="text-stone-300">Wind Direction Vector</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ========================================================= */}
-      {/* SECTION 2: HOURLY WIND FORECAST & DIRECTION SCRUBBER      */}
+      {/* SECTION 2: HOURLY WIND FORECAST (RIGHT UNDER THE MAP)     */}
       {/* ========================================================= */}
       <div className="bg-[#111a17] border border-[#233830] rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
         {/* Forecast Header & Quick Filters */}
@@ -743,7 +618,7 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
               </span>
             </div>
             <p className="text-xs text-stone-400 mt-0.5">
-              Tap any hour to simulate that hour's wind direction and downwind scent cone on the map above.
+              Tap any hour to simulate that hour's wind direction on the map above.
             </p>
           </div>
 
@@ -950,7 +825,109 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
       </div>
 
       {/* ========================================================= */}
-      {/* FULLSCREEN PHOTO ZOOM MODAL (Clean map with tactical HUD)  */}
+      {/* SECTION 3: PARCEL WIND & SCENT INTELLIGENCE               */}
+      {/* ========================================================= */}
+      <div className="bg-[#111a17] border border-[#233830] rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+        {/* Property Header */}
+        <div className="flex items-start justify-between border-b border-[#243932] pb-3 gap-2">
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+              <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold">
+                {isPreviewing ? `Forecast Vector (${selectedHour?.hourLabel})` : 'Live Parcel Wind Vector'}
+              </span>
+            </div>
+            <h4 className="text-base font-bold text-stone-100 mt-1">
+              {location?.name || 'Hunting Unit'}, MI Parcel Intelligence
+            </h4>
+            <p className="text-xs text-stone-300 mt-0.5">
+              {isTustin
+                ? 'Osceola Co. • Carey & Janke 160th Ave Tract'
+                : isLeRoy
+                ? 'Osceola Co. • Bear Lake & Cadillac Forest Tract'
+                : isRosebush
+                ? 'Isabella Co. • Feinaur Family Chippewa River Tract'
+                : location?.acreage || 'Whitetail Hunting Unit'}
+            </p>
+          </div>
+
+          <div className="text-right shrink-0">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-950 text-amber-300 border border-amber-700 shadow-md">
+              <Wind className="w-4 h-4 text-amber-400 animate-pulse" />
+              <span>{activeWindCardinal} {activeWindSpeed} mph</span>
+            </span>
+          </div>
+        </div>
+
+        {/* 4-Stat Live Telemetry Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
+            <span className="text-[10px] font-mono text-stone-400 block uppercase">Heading</span>
+            <span className="text-sm font-mono font-bold text-amber-400">
+              {activeWindCardinal} ({activeWindDirection}°)
+            </span>
+          </div>
+          <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
+            <span className="text-[10px] font-mono text-stone-400 block uppercase">Speed</span>
+            <span className="text-sm font-mono font-bold text-stone-100">
+              {activeWindSpeed} <span className="text-[10px] text-stone-400 font-normal">mph</span>
+            </span>
+          </div>
+          <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
+            <span className="text-[10px] font-mono text-stone-400 block uppercase">Barometer</span>
+            <span className="text-sm font-mono font-bold text-emerald-400">
+              {activePressure} <span className="text-[10px] text-stone-400 font-normal">inHg</span>
+            </span>
+          </div>
+          <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#273d34] text-center">
+            <span className="text-[10px] font-mono text-stone-400 block uppercase">Temp</span>
+            <span className="text-sm font-mono font-bold text-stone-100">
+              {activeTemp}°F
+            </span>
+          </div>
+        </div>
+
+        {/* Scent Dispersion Drift Path */}
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono uppercase text-amber-400 font-bold flex items-center justify-between">
+            <span className="flex items-center gap-1">
+              <Wind className="w-3.5 h-3.5 text-amber-400" />
+              <span>Scent Drift Corridor</span>
+            </span>
+            <span className="text-amber-300 text-[10px] font-bold">
+              Carrying: {parcelAnalysis.driftDirection}
+            </span>
+          </div>
+          <p className="text-xs text-stone-200 bg-[#172621] p-3 rounded-xl border border-[#294237] leading-relaxed">
+            {parcelAnalysis.detail}
+          </p>
+        </div>
+
+        {/* Thermal Drafts & Topography */}
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono uppercase text-stone-400 font-bold flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5 text-amber-300" />
+            <span>Terrain & Thermal Draft Dynamics</span>
+          </div>
+          <p className="text-xs text-stone-300 bg-[#131f1a] p-2.5 rounded-lg border border-[#20332c] leading-relaxed">
+            {parcelAnalysis.thermals}
+          </p>
+        </div>
+
+        {/* Stealth Access Route */}
+        <div className="space-y-1">
+          <div className="text-[10px] font-mono uppercase text-emerald-400 font-bold flex items-center gap-1">
+            <Navigation className="w-3 h-3" />
+            <span>Recommended Stealth Ingress Route</span>
+          </div>
+          <p className="text-xs text-stone-300 bg-[#14201c] p-2.5 rounded-lg border border-[#20332c] leading-relaxed">
+            {parcelAnalysis.accessAdvice}
+          </p>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* FULLSCREEN PHOTO ZOOM MODAL (Clean map, semi-transparent compass, NO RED CONE)  */}
       {/* ========================================================= */}
       {isZoomModalOpen && propertyAerialPhoto && (
         <div
@@ -1004,38 +981,19 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
                   className="w-full h-full object-cover"
                 />
 
-                {/* Central Tactical Wind Direction Indicator in Modal */}
+                {/* Central Tactical Wind Direction Indicator in Modal (Semi-Transparent, NO RED CONE) */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none flex items-center justify-center">
-                  {/* Scent Dispersion Danger Cone originating from center */}
-                  <div
-                    className="absolute pointer-events-none transition-transform duration-700"
-                    style={{ transform: `rotate(${downwindAngle}deg)` }}
-                  >
-                    <div
-                      className="w-0 h-0 border-x-[55px] border-x-transparent border-t-[190px] border-t-rose-600/40 filter blur-[2px]"
-                      style={{ transform: 'translate(-50%, -100%)' }}
-                    />
-                    <div
-                      className="w-0 h-0 border-x-[36px] border-x-transparent border-t-[170px] border-t-rose-500/50 absolute top-0 left-0"
-                      style={{ transform: 'translate(-50%, -100%)' }}
-                    />
-                    <div
-                      className="w-3 h-3 rounded-full bg-rose-400 absolute animate-ping"
-                      style={{ transform: 'translate(-50%, -100px)' }}
-                    />
-                  </div>
-
-                  {/* 360-Degree Compass Dial HUD Ring */}
-                  <div className="relative w-44 h-44 sm:w-52 sm:h-52 rounded-full border-2 border-amber-400/80 bg-[#07130e]/85 backdrop-blur-md shadow-2xl shadow-black/90 flex items-center justify-center">
-                    <div className="absolute -inset-2 rounded-full border border-amber-400/30 animate-pulse pointer-events-none" />
+                  {/* 360-Degree Compass Dial HUD Ring - Semi-Transparent */}
+                  <div className="relative w-44 h-44 sm:w-52 sm:h-52 rounded-full border-2 border-amber-400/70 bg-[#07130e]/30 backdrop-blur-sm shadow-2xl shadow-black/90 flex items-center justify-center">
+                    <div className="absolute -inset-1.5 rounded-full border border-amber-400/30 animate-pulse pointer-events-none" />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <div className="w-full h-[1px] bg-emerald-500/30" />
-                      <div className="h-full w-[1px] bg-emerald-500/30 absolute" />
+                      <div className="w-full h-[1px] bg-emerald-400/40" />
+                      <div className="h-full w-[1px] bg-emerald-400/40 absolute" />
                     </div>
-                    <span className="absolute top-1.5 text-xs font-mono font-black text-amber-400 tracking-wider">N</span>
-                    <span className="absolute bottom-1.5 text-[11px] font-mono font-bold text-stone-300">S</span>
-                    <span className="absolute right-2 text-[11px] font-mono font-bold text-stone-300">E</span>
-                    <span className="absolute left-2 text-[11px] font-mono font-bold text-stone-300">W</span>
+                    <span className="absolute top-1.5 text-xs font-mono font-black text-amber-400 tracking-wider drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">N</span>
+                    <span className="absolute bottom-1.5 text-[11px] font-mono font-bold text-stone-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">S</span>
+                    <span className="absolute right-2 text-[11px] font-mono font-bold text-stone-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">E</span>
+                    <span className="absolute left-2 text-[11px] font-mono font-bold text-stone-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">W</span>
 
                     {/* Rotating Vector Arrow */}
                     <div
@@ -1049,16 +1007,16 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
                       </div>
                     </div>
 
-                    {/* Center Badge */}
-                    <div className="relative z-10 w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#0a1813] border-2 border-amber-400 shadow-inner flex flex-col items-center justify-center text-center p-1">
+                    {/* Center Badge - Semi-Transparent */}
+                    <div className="relative z-10 w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-[#0a1813]/40 backdrop-blur-sm border border-amber-400/60 shadow-lg flex flex-col items-center justify-center text-center p-1">
                       <Wind className="w-5 h-5 text-amber-400 animate-pulse mb-0.5" />
-                      <div className="text-sm sm:text-base font-black font-mono text-white leading-tight">
+                      <div className="text-sm sm:text-base font-black font-mono text-white leading-tight drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
                         {activeWindCardinal}
                       </div>
-                      <div className="text-xs sm:text-sm font-bold font-mono text-amber-400 leading-none">
-                        {activeWindSpeed} <span className="text-[10px] font-normal text-stone-300">MPH</span>
+                      <div className="text-xs sm:text-sm font-bold font-mono text-amber-400 leading-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
+                        {activeWindSpeed} <span className="text-[10px] font-normal text-stone-200">MPH</span>
                       </div>
-                      <div className="text-[10px] font-mono text-stone-400 mt-0.5">
+                      <div className="text-[10px] font-mono text-stone-300 mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">
                         {activeWindDirection}°
                       </div>
                     </div>
@@ -1074,7 +1032,7 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
                   Wind: {activeWindSpeed} mph {activeWindCardinal} ({activeWindDirection}°)
                 </span>
                 <span className="text-stone-300">
-                  Scent Vector: <span className="text-amber-300 font-semibold">Carrying {activeWindCardinal}</span>
+                  Carrying: <span className="text-amber-300 font-semibold">{parcelAnalysis.driftDirection}</span>
                 </span>
               </div>
               <button

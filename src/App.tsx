@@ -538,6 +538,7 @@ export default function App() {
                 location={currentLocation}
                 weather={weather}
                 standSpots={[]}
+                activeDate={activeAppDate}
               />
             )}
           </div>
@@ -562,7 +563,7 @@ export default function App() {
             currentWeather={weather}
             activeAppDate={activeAppDate}
             onSelectDate={(newDate) => {
-              // Date selected in calendar
+              setActiveAppDate(newDate);
             }}
             onApplyDateToApp={(newDate) => {
               setActiveAppDate(newDate);

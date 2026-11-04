@@ -373,92 +373,7 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
         </div>
       </div>
 
-      {/* 2. Interactive Live Weather Radar & Precipitation Tracker */}
-      <div className="bg-[#111a17] border border-[#233830] rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-3 sm:p-4 bg-[#14201c] border-b border-[#233830] flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-            <h3 className="font-bold text-sm text-stone-100 flex items-center gap-1.5">
-              <span>Live Doppler Weather Radar</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
-                RainViewer Live Feed
-              </span>
-            </h3>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-stone-400 mr-1 hidden sm:inline">Zoom:</span>
-            <button
-              onClick={() => setRadarZoom((prev) => Math.max(5, prev - 1))}
-              className="px-2 py-0.5 rounded-lg bg-[#192923] hover:bg-[#20362e] border border-[#2b443a] text-xs font-mono text-stone-200 transition-colors"
-              title="Zoom Out Radar"
-            >
-              -
-            </button>
-            <span className="text-xs font-mono px-1.5 text-stone-300">{radarZoom}x</span>
-            <button
-              onClick={() => setRadarZoom((prev) => Math.min(12, prev + 1))}
-              className="px-2 py-0.5 rounded-lg bg-[#192923] hover:bg-[#20362e] border border-[#2b443a] text-xs font-mono text-stone-200 transition-colors"
-              title="Zoom In Radar"
-            >
-              +
-            </button>
-
-            <button
-              onClick={() => setIsRadarFullscreen(!isRadarFullscreen)}
-              className="ml-2 p-1.5 rounded-lg bg-[#192923] hover:bg-[#20362e] border border-[#2b443a] text-amber-400 transition-colors"
-              title="Toggle Fullscreen Radar"
-            >
-              {isRadarFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Embedded Radar Frame Container */}
-        <div
-          className={`relative bg-black transition-all ${
-            isRadarFullscreen ? 'fixed inset-0 z-50 p-4 bg-black/95 flex flex-col' : 'h-[360px] sm:h-[440px]'
-          }`}
-        >
-          {isRadarFullscreen && (
-            <div className="flex items-center justify-between pb-3 text-stone-200">
-              <span className="font-bold text-sm flex items-center gap-2">
-                <Radio className="w-4 h-4 text-emerald-400" />
-                Live Doppler Weather Radar • {location.name}
-              </span>
-              <button
-                onClick={() => setIsRadarFullscreen(false)}
-                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded-lg text-xs font-bold text-white"
-              >
-                Exit Fullscreen
-              </button>
-            </div>
-          )}
-
-          <iframe
-            src={radarUrl}
-            title={`Live Radar for ${location.name}`}
-            className="w-full h-full border-0 rounded-b-xl"
-            loading="lazy"
-            allowFullScreen
-          />
-
-          {/* Quick Overlay Legend */}
-          <div className="absolute bottom-2.5 left-2.5 z-10 bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] px-3 py-1.5 rounded-xl text-[10px] font-mono text-stone-300 flex items-center gap-3 shadow-lg pointer-events-none">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-sky-400" /> Light Rain
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-amber-400" /> Moderate
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-rose-500" /> Heavy / Storm
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Hourly 24-Hour Forecast & 7-Day Outlook */}
+      {/* 2. Hourly 24-Hour Forecast & 7-Day Outlook (Above Live Radar) */}
       <div className="bg-[#111a17] border border-[#233830] rounded-2xl overflow-hidden shadow-xl">
         {/* Tab Switcher */}
         <div className="p-3 bg-[#14201c] border-b border-[#233830] flex items-center justify-between">
@@ -586,6 +501,91 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
             ))}
           </div>
         )}
+      </div>
+
+      {/* 3. Interactive Live Weather Radar & Precipitation Tracker */}
+      <div className="bg-[#111a17] border border-[#233830] rounded-2xl overflow-hidden shadow-xl">
+        <div className="p-3 sm:p-4 bg-[#14201c] border-b border-[#233830] flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+            <h3 className="font-bold text-sm text-stone-100 flex items-center gap-1.5">
+              <span>Live Doppler Weather Radar</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
+                RainViewer Live Feed
+              </span>
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-stone-400 mr-1 hidden sm:inline">Zoom:</span>
+            <button
+              onClick={() => setRadarZoom((prev) => Math.max(5, prev - 1))}
+              className="px-2 py-0.5 rounded-lg bg-[#192923] hover:bg-[#20362e] border border-[#2b443a] text-xs font-mono text-stone-200 transition-colors"
+              title="Zoom Out Radar"
+            >
+              -
+            </button>
+            <span className="text-xs font-mono px-1.5 text-stone-300">{radarZoom}x</span>
+            <button
+              onClick={() => setRadarZoom((prev) => Math.min(12, prev + 1))}
+              className="px-2 py-0.5 rounded-lg bg-[#192923] hover:bg-[#20362e] border border-[#2b443a] text-xs font-mono text-stone-200 transition-colors"
+              title="Zoom In Radar"
+            >
+              +
+            </button>
+
+            <button
+              onClick={() => setIsRadarFullscreen(!isRadarFullscreen)}
+              className="ml-2 p-1.5 rounded-lg bg-[#192923] hover:bg-[#20362e] border border-[#2b443a] text-amber-400 transition-colors"
+              title="Toggle Fullscreen Radar"
+            >
+              {isRadarFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Embedded Radar Frame Container */}
+        <div
+          className={`relative bg-black transition-all ${
+            isRadarFullscreen ? 'fixed inset-0 z-50 p-4 bg-black/95 flex flex-col' : 'h-[360px] sm:h-[440px]'
+          }`}
+        >
+          {isRadarFullscreen && (
+            <div className="flex items-center justify-between pb-3 text-stone-200">
+              <span className="font-bold text-sm flex items-center gap-2">
+                <Radio className="w-4 h-4 text-emerald-400" />
+                Live Doppler Weather Radar • {location.name}
+              </span>
+              <button
+                onClick={() => setIsRadarFullscreen(false)}
+                className="px-3 py-1 bg-amber-600 hover:bg-amber-500 rounded-lg text-xs font-bold text-white"
+              >
+                Exit Fullscreen
+              </button>
+            </div>
+          )}
+
+          <iframe
+            src={radarUrl}
+            title={`Live Radar for ${location.name}`}
+            className="w-full h-full border-0 rounded-b-xl"
+            loading="lazy"
+            allowFullScreen
+          />
+
+          {/* Quick Overlay Legend */}
+          <div className="absolute bottom-2.5 left-2.5 z-10 bg-[#0d1613]/90 backdrop-blur-md border border-[#2a453b] px-3 py-1.5 rounded-xl text-[10px] font-mono text-stone-300 flex items-center gap-3 shadow-lg pointer-events-none">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-sky-400" /> Light Rain
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-400" /> Moderate
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-rose-500" /> Heavy / Storm
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* 4. Tactical Atmospheric Intel for Hunting & Fishing */}
