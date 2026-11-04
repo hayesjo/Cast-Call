@@ -21,6 +21,7 @@ import { WeatherRadarView } from './components/WeatherRadarView';
 import { FutureForecastCalendar } from './components/FutureForecastCalendar';
 import { LocationSearchModal } from './components/LocationSearchModal';
 import { calculateSolarTimes } from './utils/solarAstronomical';
+import { deriveWeatherForDate } from './utils/weatherForecastDeriver';
 import { Loader2, AlertCircle, Calendar } from 'lucide-react';
 
 export default function App() {
@@ -147,7 +148,7 @@ export default function App() {
       // Direct client fallback to Open-Meteo for GitHub Pages static deployments
       if (!data || !data.current) {
         try {
-          const directUrl = `https://api.open-meteo.com/v1/forecast?latitude=${currentLocation.lat}&longitude=${currentLocation.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,dew_point_2m&hourly=temperature_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,precipitation_probability_max,wind_speed_10m_max&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto`;
+          const directUrl = `https://api.open-meteo.com/v1/forecast?latitude=${currentLocation.lat}&longitude=${currentLocation.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,dew_point_2m&hourly=temperature_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,precipitation_probability,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=16`;
           const directRes = await fetch(directUrl);
           if (directRes.ok) {
             data = await directRes.json();
@@ -221,55 +222,109 @@ export default function App() {
       const code = current.weather_code || 0;
       const condName = getCodeName(code);
 
-      // Parse 24 hourly points
-      const hourlyForecast = [];
+      // Parse all hourly forecast points (up to 16 days / 384 hours)
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const currentDate = now.getDate();
+      const currentHour = now.getHours();
+
+      const allHourlyForecast = [];
+      let currentHourIndexInAll = -1;
+
       if (hourly.time && hourly.time.length > 0) {
-        const count = Math.min(24, hourly.time.length);
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < hourly.time.length; i++) {
           const tIso = hourly.time[i];
           const hDate = new Date(tIso);
           const h = hDate.getHours();
-          const hourLabel =
-            i === 0
-              ? 'Now'
-              : h === 0
+          const isCurrentHour =
+            hDate.getFullYear() === currentYear &&
+            hDate.getMonth() === currentMonth &&
+            hDate.getDate() === currentDate &&
+            h === currentHour;
+
+          if (isCurrentHour && currentHourIndexInAll === -1) {
+            currentHourIndexInAll = i;
+          }
+
+          const standardHourLabel =
+            h === 0
               ? '12 AM'
               : h < 12
               ? `${h} AM`
               : h === 12
               ? '12 PM'
               : `${h - 12} PM`;
+
+          const hourLabel = isCurrentHour ? 'Now' : standardHourLabel;
           const hCode = hourly.weather_code?.[i] ?? 0;
           const hDeg = hourly.wind_direction_10m?.[i] ?? deg;
           const hCard = cardinals[Math.round(hDeg / 45) % 8];
           const hPressure = (hourly.surface_pressure?.[i] ?? rawPressureHpa) * 0.02953;
 
-          hourlyForecast.push({
+          allHourlyForecast.push({
             time: tIso,
             hourLabel,
-            temp: Math.round(hourly.temperature_2m?.[i] ?? current.temperature_2m ?? 65),
-            feelsLike: Math.round(hourly.apparent_temperature?.[i] ?? current.apparent_temperature ?? 63),
+            temp: isCurrentHour
+              ? Math.round(current.temperature_2m ?? hourly.temperature_2m?.[i] ?? 65)
+              : Math.round(hourly.temperature_2m?.[i] ?? current.temperature_2m ?? 65),
+            feelsLike: isCurrentHour
+              ? Math.round(current.apparent_temperature ?? hourly.apparent_temperature?.[i] ?? 63)
+              : Math.round(hourly.apparent_temperature?.[i] ?? current.apparent_temperature ?? 63),
             pressure: parseFloat(hPressure.toFixed(2)),
             rainProb: Math.round(hourly.precipitation_probability?.[i] ?? 0),
-            windSpeed: Math.round(hourly.wind_speed_10m?.[i] ?? current.wind_speed_10m ?? 8),
-            windDirection: hDeg,
-            windCardinal: hCard,
-            weatherCode: hCode,
-            conditionName: getCodeName(hCode),
+            windSpeed: isCurrentHour
+              ? Math.round(current.wind_speed_10m ?? hourly.wind_speed_10m?.[i] ?? 8)
+              : Math.round(hourly.wind_speed_10m?.[i] ?? current.wind_speed_10m ?? 8),
+            windDirection: isCurrentHour ? deg : hDeg,
+            windCardinal: isCurrentHour ? cardinal : hCard,
+            weatherCode: isCurrentHour ? code : hCode,
+            conditionName: isCurrentHour ? condName : getCodeName(hCode),
           });
         }
       }
 
-      // Parse 7 daily points
+      // If exact hour wasn't matched, find the first slot at or after current time
+      if (currentHourIndexInAll === -1 && allHourlyForecast.length > 0) {
+        currentHourIndexInAll = allHourlyForecast.findIndex(
+          (h) => new Date(h.time).getTime() >= now.getTime() - 1800000
+        );
+        if (currentHourIndexInAll === -1) currentHourIndexInAll = 0;
+      }
+
+      // Today's hourlyForecast displays 24 consecutive hours starting at current time ("Now")
+      const hourlyForecast = allHourlyForecast.slice(
+        Math.max(0, currentHourIndexInAll),
+        Math.max(0, currentHourIndexInAll) + 24
+      );
+
+      // Ensure the first card reflects live telemetry and is labeled 'Now'
+      if (hourlyForecast.length > 0) {
+        hourlyForecast[0] = {
+          ...hourlyForecast[0],
+          hourLabel: 'Now',
+          temp: Math.round(current.temperature_2m ?? hourlyForecast[0].temp),
+          feelsLike: Math.round(current.apparent_temperature ?? hourlyForecast[0].feelsLike),
+          windSpeed: Math.round(current.wind_speed_10m ?? hourlyForecast[0].windSpeed),
+          windDirection: deg,
+          windCardinal: cardinal,
+          pressure: parseFloat(currentPressureInHg.toFixed(2)),
+          weatherCode: code,
+          conditionName: condName,
+        };
+      }
+
+      // Parse all daily points (up to 16 days)
       const dailyForecast = [];
       if (daily.time && daily.time.length > 0) {
         const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const count = Math.min(7, daily.time.length);
-        for (let i = 0; i < count; i++) {
+        for (let i = 0; i < daily.time.length; i++) {
           const dIso = daily.time[i];
           const dDate = new Date(dIso + 'T12:00:00');
           const dayLabel = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : dayNames[dDate.getDay()];
           const dCode = daily.weather_code?.[i] ?? code;
+          const dDeg = daily.wind_direction_10m_dominant?.[i] ?? deg;
+          const dCard = cardinals[Math.round(dDeg / 45) % 8];
 
           dailyForecast.push({
             date: dIso,
@@ -280,7 +335,10 @@ export default function App() {
             conditionName: getCodeName(dCode),
             rainProbMax: Math.round(daily.precipitation_probability_max?.[i] ?? 10),
             windSpeedMax: Math.round(daily.wind_speed_10m_max?.[i] ?? 12),
-            windCardinal: cardinal,
+            windDirection: dDeg,
+            windCardinal: dCard,
+            sunrise: daily.sunrise?.[i] ? formatTime(daily.sunrise[i]) : undefined,
+            sunset: daily.sunset?.[i] ? formatTime(daily.sunset[i]) : undefined,
           });
         }
       }
@@ -306,6 +364,7 @@ export default function App() {
         sunset,
         hourlyTemps: [],
         hourlyForecast,
+        allHourlyForecast,
         dailyForecast,
       };
 
@@ -361,38 +420,51 @@ export default function App() {
     return calculateSolunar(activeAppDate, effectiveSolar.sunrise, effectiveSolar.sunset);
   }, [activeAppDate, effectiveSolar.sunrise, effectiveSolar.sunset]);
 
+  // Dynamically derive meteorological conditions for activeAppDate
+  // (Live telemetry for today; 16-day numerical hour-by-hour forecast; astronomical climatology beyond)
+  const effectiveWeather = useMemo(() => {
+    return deriveWeatherForDate(
+      activeAppDate,
+      weather,
+      weather.allHourlyForecast || weather.hourlyForecast,
+      weather.dailyForecast,
+      currentLocation.lat,
+      currentLocation.lon
+    );
+  }, [activeAppDate, weather, currentLocation.lat, currentLocation.lon]);
+
   // Rut calculations for hunting
   const rut = useMemo(() => {
     return calculateRutForecast(activeAppDate, currentLocation.lat);
   }, [activeAppDate, currentLocation.lat]);
 
-  // Bass forecast calculations
+  // Bass forecast calculations based on effective weather for selected date
   const bassForecast = useMemo<BassForecast>(() => {
     return calculateBassForecast({
       waterTemp: bassTuning.waterTemp,
-      pressureTrend: weather.pressureTrend,
-      pressureValue: weather.pressure,
+      pressureTrend: effectiveWeather.pressureTrend,
+      pressureValue: effectiveWeather.pressure,
       waterClarity: bassTuning.waterClarity,
       lightCondition: bassTuning.lightCondition,
       forageActive: bassTuning.forageActive,
-      windSpeed: weather.windSpeed,
-      windCardinal: weather.windCardinal,
-      windDirection: weather.windDirection,
+      windSpeed: effectiveWeather.windSpeed,
+      windCardinal: effectiveWeather.windCardinal,
+      windDirection: effectiveWeather.windDirection,
       seasonMonth: activeAppDate.getMonth(),
     });
-  }, [bassTuning, weather, activeAppDate]);
+  }, [bassTuning, effectiveWeather, activeAppDate]);
 
-  // Composite hunting score
+  // Composite hunting score based on effective weather for selected date
   const huntingCompositeScore = useMemo(() => {
     let score = rut.rutActivityScore * 0.45 + solunar.overallSolunarScore * 0.35;
-    if (weather.pressureTrend === 'falling' || weather.pressureTrend === 'rapidly_falling') {
+    if (effectiveWeather.pressureTrend === 'falling' || effectiveWeather.pressureTrend === 'rapidly_falling') {
       score += 15;
-    } else if (weather.pressureTrend === 'rising') {
+    } else if (effectiveWeather.pressureTrend === 'rising') {
       score += 5;
     }
-    if (weather.temp >= 30 && weather.temp <= 50) score += 5;
+    if (effectiveWeather.temp >= 30 && effectiveWeather.temp <= 50) score += 5;
     return Math.max(40, Math.min(99, Math.round(score)));
-  }, [rut, solunar, weather]);
+  }, [rut, solunar, effectiveWeather]);
 
   // Active composite score based on current mode
   const activeScore = mode === 'fishing' ? bassForecast.compositeBiteScore : huntingCompositeScore;
@@ -505,7 +577,7 @@ export default function App() {
             {mode === 'fishing' ? (
               <FishingForecastView
                 location={currentLocation}
-                weather={weather}
+                weather={effectiveWeather}
                 solunar={solunar}
                 bassForecast={bassForecast}
                 onUpdateConditions={(updates) => setBassTuning((prev) => ({ ...prev, ...updates }))}
@@ -514,7 +586,7 @@ export default function App() {
             ) : (
               <HuntingForecastView
                 location={currentLocation}
-                weather={weather}
+                weather={effectiveWeather}
                 solunar={solunar}
                 rut={rut}
                 huntingScore={huntingCompositeScore}
@@ -530,13 +602,13 @@ export default function App() {
             {mode === 'fishing' ? (
               <InteractiveLakeMap
                 location={currentLocation}
-                weather={weather}
+                weather={effectiveWeather}
                 hotspots={currentLocation.hotspots || bassForecast.bestZones}
               />
             ) : (
               <WindScentCompass
                 location={currentLocation}
-                weather={weather}
+                weather={effectiveWeather}
                 standSpots={[]}
                 activeDate={activeAppDate}
               />
@@ -549,7 +621,9 @@ export default function App() {
           <WeatherRadarView
             mode={mode}
             location={currentLocation}
-            weather={weather}
+            weather={effectiveWeather}
+            activeDate={activeAppDate}
+            onResetDate={() => setActiveAppDate(new Date())}
             isLoading={isLoadingWeather}
             onRefreshWeather={() => fetchWeather()}
           />
@@ -560,7 +634,7 @@ export default function App() {
           <FutureForecastCalendar
             mode={mode}
             location={currentLocation}
-            currentWeather={weather}
+            currentWeather={effectiveWeather}
             activeAppDate={activeAppDate}
             onSelectDate={(newDate) => {
               setActiveAppDate(newDate);

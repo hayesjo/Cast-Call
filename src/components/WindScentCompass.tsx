@@ -83,6 +83,11 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
     setSelectedHour(null);
   }, [location?.id, location?.name, hasAerialMap]);
 
+  // Reset hour preview when active calendar date changes
+  useEffect(() => {
+    setSelectedHour(null);
+  }, [activeDate]);
+
   // Fallback 24-hour generator if weather.hourlyForecast is empty
   const hourlyData: HourlyWeatherPoint[] = useMemo(() => {
     if (weather.hourlyForecast && weather.hourlyForecast.length > 0) {
@@ -95,16 +100,15 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
     for (let i = 0; i < 24; i++) {
       const hDate = new Date(now.getTime() + i * 3600 * 1000);
       const h = hDate.getHours();
-      const hourLabel =
-        i === 0
-          ? 'Now'
-          : h === 0
+      const standardLabel =
+        h === 0
           ? '12 AM'
           : h < 12
           ? `${h} AM`
           : h === 12
           ? '12 PM'
           : `${h - 12} PM`;
+      const hourLabel = i === 0 && !weather.isCustomDateForecast ? 'Now' : standardLabel;
 
       // Slight natural wind veer & speed variance
       const speedOffset = Math.sin(i / 3) * 3;
@@ -359,22 +363,22 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
                   <Clock className="w-3 h-3" />
                   <span>Previewing {selectedHour?.hourLabel} Forecast</span>
                 </span>
+              ) : weather.isCustomDateForecast ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-700 font-mono font-bold flex items-center gap-1 shadow-sm">
+                  <Calendar className="w-3 h-3 text-amber-400" />
+                  <span>Forecast: {weather.forecastDateLabel || (activeDate && activeDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })) || 'Selected Date'}</span>
+                </span>
               ) : (
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800/60 font-mono">
                   Live Wind Direction
                 </span>
               )}
-              {activeDate &&
-                (activeDate.getDate() !== new Date().getDate() ||
-                  activeDate.getMonth() !== new Date().getMonth()) && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-700 font-mono">
-                    Date: {activeDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                  </span>
-                )}
             </div>
             <p className="text-[11px] text-stone-400 mt-0.5">
               {isPreviewing
                 ? `Simulating forecasted ${activeWindSpeed} mph ${activeWindCardinal} (${activeWindDirection}°) wind vector for ${selectedHour?.hourLabel}.`
+                : weather.isCustomDateForecast
+                ? `High-resolution aerial satellite survey of ${location?.name || 'Hunting Unit'}, MI with wind compass adjusted for ${weather.forecastDateLabel || 'selected date'} (${activeWindSpeed} mph ${activeWindCardinal}).`
                 : `High-resolution aerial satellite survey of ${location?.name || 'Hunting Unit'}, MI with tactical semi-transparent wind compass centered on the property.`}
             </p>
           </div>
@@ -610,8 +614,13 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-emerald-400" />
-              <h4 className="font-bold text-sm text-stone-100">
-                Hourly Wind Direction & Velocity Forecast
+              <h4 className="font-bold text-sm text-stone-100 flex items-center gap-1.5">
+                <span>Hourly Wind Direction & Velocity Forecast</span>
+                {weather.isCustomDateForecast && (
+                  <span className="text-amber-300 font-semibold text-xs">
+                    • {weather.forecastDateLabel || 'Selected Date'}
+                  </span>
+                )}
               </h4>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
                 Interactive Scent Scrubber
@@ -686,7 +695,9 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
           <div className="flex items-center gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-[#253d33] scrollbar-track-transparent">
             {filteredHourlyData.map((hour, idx) => {
               const isSelected = selectedHour?.time === hour.time;
-              const isCurrent = idx === 0 && !selectedHour;
+              const isCurrent =
+                (hour.hourLabel === 'Now' || (!weather.isCustomDateForecast && idx === 0)) &&
+                !selectedHour;
 
               // Color based on velocity
               const speedColor =
@@ -834,7 +845,11 @@ export const WindScentCompass: React.FC<WindScentCompassProps> = ({
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
               <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold">
-                {isPreviewing ? `Forecast Vector (${selectedHour?.hourLabel})` : 'Live Parcel Wind Vector'}
+                {isPreviewing
+                  ? `Forecast Vector (${selectedHour?.hourLabel})`
+                  : weather.isCustomDateForecast
+                  ? `Forecast Vector (${weather.forecastDateLabel || 'Selected Date'})`
+                  : 'Live Parcel Wind Vector'}
               </span>
             </div>
             <h4 className="text-base font-bold text-stone-100 mt-1">

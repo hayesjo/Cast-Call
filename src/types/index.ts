@@ -85,6 +85,9 @@ export interface DailyWeatherPoint {
   rainProbMax: number;
   windSpeedMax: number;
   windCardinal: string;
+  windDirection?: number;
+  sunrise?: string;
+  sunset?: string;
 }
 
 export interface WeatherData {
@@ -112,6 +115,10 @@ export interface WeatherData {
   hourlyTemps: { time: string; temp: number; pressure: number; rainProb: number }[];
   hourlyForecast?: HourlyWeatherPoint[];
   dailyForecast?: DailyWeatherPoint[];
+  allHourlyForecast?: HourlyWeatherPoint[];
+  isCustomDateForecast?: boolean;
+  forecastDate?: Date;
+  forecastDateLabel?: string;
 }
 
 export interface MoonPhaseData {

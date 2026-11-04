@@ -36,6 +36,8 @@ interface WeatherRadarViewProps {
   mode: Mode;
   location: SavedLocation;
   weather: WeatherData;
+  activeDate?: Date;
+  onResetDate?: () => void;
   isLoading?: boolean;
   onRefreshWeather?: () => void;
 }
@@ -44,6 +46,8 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
   mode,
   location,
   weather,
+  activeDate,
+  onResetDate,
   isLoading = false,
   onRefreshWeather,
 }) => {
@@ -77,16 +81,15 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
     for (let i = 0; i < 24; i++) {
       const hDate = new Date(now.getTime() + i * 3600 * 1000);
       const h = hDate.getHours();
-      const hourLabel =
-        i === 0
-          ? 'Now'
-          : h === 0
+      const standardLabel =
+        h === 0
           ? '12 AM'
           : h < 12
           ? `${h} AM`
           : h === 12
           ? '12 PM'
           : `${h - 12} PM`;
+      const hourLabel = i === 0 && !weather.isCustomDateForecast ? 'Now' : standardLabel;
 
       // Diurnal temperature curve
       const diurnalOffset = Math.sin(((h - 9) / 24) * 2 * Math.PI) * 7;
@@ -226,10 +229,19 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
 
         <div className="flex flex-wrap items-start justify-between gap-3 relative z-10">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono uppercase tracking-wider font-bold">
-                Live Atmospheric Telemetry
-              </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {weather.isCustomDateForecast ? (
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-700 text-[10px] font-mono uppercase tracking-wider font-bold flex items-center gap-1.5 shadow-sm">
+                  <Calendar className="w-3 h-3 text-amber-400" />
+                  <span>
+                    Forecast: {weather.forecastDateLabel || (activeDate && activeDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })) || 'Selected Date'}
+                  </span>
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono uppercase tracking-wider font-bold">
+                  Live Atmospheric Telemetry
+                </span>
+              )}
               <span className="text-xs text-stone-400 font-mono">
                 {location.state} • {location.lat.toFixed(3)}°, {location.lon.toFixed(3)}°
               </span>
@@ -242,25 +254,41 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
               </span>
             </h2>
 
-            <p className="text-xs text-stone-300 mt-0.5 flex items-center gap-2">
-              <span>{weather.conditionName}</span>
+            <p className="text-xs text-stone-300 mt-0.5 flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-amber-300">{weather.conditionName}</span>
               <span>•</span>
-              <span className="text-stone-400">Updated from Open-Meteo & NOAA Station Grids</span>
+              <span className="text-stone-400">
+                {weather.isCustomDateForecast
+                  ? `Simulated 24-hr meteorological trajectory for ${weather.forecastDateLabel || 'selected date'}`
+                  : 'Updated from Open-Meteo & NOAA Station Grids'}
+              </span>
             </p>
           </div>
 
-          {/* Sync Button */}
-          {onRefreshWeather && (
-            <button
-              onClick={onRefreshWeather}
-              disabled={isLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#172620] hover:bg-[#1f332b] text-stone-200 border border-[#2b443a] text-xs font-medium transition-all shadow-sm active:scale-95 disabled:opacity-50"
-              title="Refresh Live Atmospheric Telemetry"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>{isLoading ? 'Updating...' : 'Sync Live'}</span>
-            </button>
-          )}
+          {/* Action Buttons: Reset to Today / Sync Live */}
+          <div className="flex items-center gap-2">
+            {weather.isCustomDateForecast && onResetDate && (
+              <button
+                onClick={onResetDate}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-900/80 hover:bg-amber-800 text-amber-100 border border-amber-600/70 text-xs font-bold transition-all shadow-sm active:scale-95"
+                title="Return weather view to today's live conditions"
+              >
+                <span>Reset to Today</span>
+              </button>
+            )}
+
+            {onRefreshWeather && (
+              <button
+                onClick={onRefreshWeather}
+                disabled={isLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#172620] hover:bg-[#1f332b] text-stone-200 border border-[#2b443a] text-xs font-medium transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                title="Refresh Atmospheric Telemetry"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isLoading ? 'animate-spin' : ''}`} />
+                <span>{isLoading ? 'Updating...' : 'Sync Live'}</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Big Temperature & Primary Metrics Display */}
@@ -403,7 +431,11 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
           </div>
 
           <span className="text-[11px] font-mono text-stone-400">
-            {activeWeatherTab === 'hourly' ? 'Hour-by-Hour Trajectory' : 'Daily High / Low & Precipitation'}
+            {activeWeatherTab === 'hourly'
+              ? weather.isCustomDateForecast
+                ? `24-Hr Trajectory (${weather.forecastDateLabel || 'Selected Date'})`
+                : 'Hour-by-Hour Trajectory'
+              : 'Daily High / Low & Precipitation'}
           </span>
         </div>
 
@@ -411,18 +443,24 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
         {activeWeatherTab === 'hourly' ? (
           <div className="p-3 sm:p-4 overflow-x-auto">
             <div className="flex gap-2 min-w-max pb-2">
-              {effectiveHourly.map((hour, idx) => (
-                <div
-                  key={idx}
-                  className={`flex flex-col items-center justify-between p-3 rounded-2xl border text-center transition-all w-24 shrink-0 ${
-                    idx === 0
-                      ? 'bg-amber-950/40 border-amber-600/70 shadow-lg'
-                      : 'bg-[#15231e] border-[#253d33] hover:border-stone-500'
-                  }`}
-                >
-                  <span className="text-[11px] font-mono font-bold text-stone-300">
-                    {hour.hourLabel}
-                  </span>
+              {effectiveHourly.map((hour, idx) => {
+                const isNow = hour.hourLabel === 'Now';
+                return (
+                  <div
+                    key={idx}
+                    className={`flex flex-col items-center justify-between p-3 rounded-2xl border text-center transition-all w-24 shrink-0 ${
+                      isNow
+                        ? 'bg-amber-950/50 border-amber-500 ring-1 ring-amber-400/60 shadow-lg'
+                        : 'bg-[#15231e] border-[#253d33] hover:border-stone-500'
+                    }`}
+                  >
+                    <span
+                      className={`text-[11px] font-mono font-bold ${
+                        isNow ? 'text-amber-300' : 'text-stone-300'
+                      }`}
+                    >
+                      {hour.hourLabel}
+                    </span>
 
                   <div className="my-2">{getWeatherIcon(hour.weatherCode, 'w-6 h-6')}</div>
 
@@ -445,8 +483,9 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
                   <span className="text-[9px] font-mono text-stone-400 mt-1">
                     {hour.pressure.toFixed(2)}
                   </span>
-                </div>
-              ))}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : (
@@ -508,11 +547,16 @@ export const WeatherRadarView: React.FC<WeatherRadarViewProps> = ({
         <div className="p-3 sm:p-4 bg-[#14201c] border-b border-[#233830] flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-            <h3 className="font-bold text-sm text-stone-100 flex items-center gap-1.5">
+            <h3 className="font-bold text-sm text-stone-100 flex flex-wrap items-center gap-1.5">
               <span>Live Doppler Weather Radar</span>
               <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800">
                 RainViewer Live Feed
               </span>
+              {weather.isCustomDateForecast && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800/80">
+                  Current Sweep • Forecast Active Above
+                </span>
+              )}
             </h3>
           </div>
 
