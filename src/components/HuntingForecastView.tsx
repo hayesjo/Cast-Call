@@ -1,5 +1,6 @@
 import React from 'react';
 import { HuntingForecast, RutForecast, SavedLocation, SolunarData, WeatherData } from '../types';
+import { DaylightMovementCurve } from './DaylightMovementCurve';
 import {
   Crosshair,
   Calendar,
@@ -60,30 +61,30 @@ export const HuntingForecastView: React.FC<HuntingForecastViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Banner: Composite Deer Activity Index & Atmospheric Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-        {/* Overall Score Card (5 cols) */}
-        <div className="md:col-span-5 bg-gradient-to-br from-[#17251e] via-[#121c18] to-[#0c1411] border border-[#263e34] rounded-2xl p-5 shadow-xl relative overflow-hidden flex flex-col justify-between">
-          <div className="absolute -top-12 -right-12 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+      {/* 1. Deer Movement & Rut Index Card */}
+      <div className="bg-gradient-to-br from-[#17251e] via-[#121c18] to-[#0c1411] border border-[#263e34] rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+        <div className="absolute -top-12 -right-12 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-          <div>
-            <div className="flex items-center justify-between">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center relative z-10">
+          {/* Main Score & Summary (8 cols) */}
+          <div className="lg:col-span-8 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-[11px] font-mono uppercase tracking-widest text-amber-400 font-bold flex items-center gap-1.5">
                 <Crosshair className="w-3.5 h-3.5" />
                 <span>Deer Movement & Rut Index</span>
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-700/60 font-mono">
-                {location.state} Outfitter Rating
+              <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-700/60 font-mono">
+                {location.state} Outfitter Rating • Active Phase: {rut.stage}
               </span>
             </div>
 
-            <div className="mt-4 flex items-baseline gap-3">
-              <span className="text-5xl font-black text-amber-400 tracking-tight font-mono">
+            <div className="flex flex-wrap items-baseline gap-3">
+              <span className="text-5xl sm:text-6xl font-black text-amber-400 tracking-tight font-mono">
                 {huntingScore}
               </span>
               <span className="text-stone-400 text-sm font-semibold">/ 100</span>
               <span
-                className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+                className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
                   huntingScore >= 85
                     ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
                     : huntingScore >= 70
@@ -91,93 +92,121 @@ export const HuntingForecastView: React.FC<HuntingForecastViewProps> = ({
                     : 'bg-stone-800 text-stone-300'
                 }`}
               >
-                {huntingScore >= 85 ? 'PRIME HUNTING WINDOW' : huntingScore >= 70 ? 'FAVORABLE ACTIVITY' : 'MODERATE FEEDING'}
+                {huntingScore >= 85
+                  ? 'PRIME HUNTING WINDOW'
+                  : huntingScore >= 70
+                  ? 'FAVORABLE ACTIVITY'
+                  : 'MODERATE FEEDING'}
               </span>
             </div>
 
-            <p className="text-xs text-stone-300 mt-2 leading-relaxed">
+            <p className="text-xs sm:text-sm text-stone-300 leading-relaxed max-w-3xl">
               {huntingScore >= 85
-                ? 'High daylight buck movement expected! Rut testosterone peak combined with favorable barometric conditions.'
-                : 'Steady movement along primary bedding transitions. Midday and late afternoon sits highly recommended.'}
+                ? 'High daylight buck movement expected! Rut testosterone peak combined with favorable barometric pressure triggers widespread cruiser activity.'
+                : 'Steady movement along primary bedding transitions. Midday and late afternoon sits highly recommended along security cover.'}
             </p>
           </div>
 
-          {/* Sub-score breakdown */}
-          <div className="grid grid-cols-3 gap-2 pt-4 mt-4 border-t border-[#233830]">
-            <div className="bg-[#14201c] p-2 rounded-xl text-center border border-[#21352e]">
+          {/* Sub-score Breakdown Tiles (4 cols) */}
+          <div className="lg:col-span-4 grid grid-cols-2 gap-2.5">
+            <div className="bg-[#14201c] p-3 rounded-xl text-center border border-[#21352e]">
               <div className="text-[9px] uppercase font-mono text-stone-400">Rut Phase</div>
-              <div className="text-xs font-bold text-amber-300 mt-0.5">{rut.rutActivityScore}%</div>
+              <div className="text-sm font-bold text-amber-300 mt-0.5">{rut.rutActivityScore}%</div>
+              <span className="text-[9px] text-stone-400 font-mono block mt-0.5 truncate">{rut.stage}</span>
             </div>
-            <div className="bg-[#14201c] p-2 rounded-xl text-center border border-[#21352e]">
+            <div className="bg-[#14201c] p-3 rounded-xl text-center border border-[#21352e]">
               <div className="text-[9px] uppercase font-mono text-stone-400">Solunar Peak</div>
-              <div className="text-xs font-bold text-emerald-300 mt-0.5">{solunar.overallSolunarScore}%</div>
+              <div className="text-sm font-bold text-emerald-300 mt-0.5">{solunar.overallSolunarScore}%</div>
+              <span className="text-[9px] text-stone-400 font-mono block mt-0.5 truncate">{solunar.moon.phaseName}</span>
             </div>
-            <div className="bg-[#14201c] p-2 rounded-xl text-center border border-[#21352e]">
-              <div className="text-[9px] uppercase font-mono text-stone-400">Pressure Shift</div>
-              <div className="text-xs font-bold text-cyan-300 mt-0.5">
-                {weather.pressureTrend === 'falling' ? '+15 Pts' : 'Steady'}
+            <div className="bg-[#14201c] p-3 rounded-xl text-center border border-[#21352e]">
+              <div className="text-[9px] uppercase font-mono text-stone-400">Barometer Shift</div>
+              <div className="text-sm font-bold text-cyan-300 mt-0.5">
+                {weather.pressureTrend === 'falling' || weather.pressureTrend === 'rapidly_falling'
+                  ? '+15 Pts'
+                  : weather.pressureTrend === 'rising'
+                  ? '+5 Pts'
+                  : 'Steady'}
               </div>
+              <span className="text-[9px] text-stone-400 font-mono block mt-0.5 truncate">{weather.pressure.toFixed(2)} inHg</span>
+            </div>
+            <div className="bg-[#14201c] p-3 rounded-xl text-center border border-[#21352e]">
+              <div className="text-[9px] uppercase font-mono text-stone-400">Thermal Wind</div>
+              <div className="text-sm font-bold text-amber-400 mt-0.5">{weather.windSpeed} mph</div>
+              <span className="text-[9px] text-stone-400 font-mono block mt-0.5">{weather.windCardinal} Flow</span>
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Live Weather & Pressure Matrix (7 cols) */}
-        <div className="md:col-span-7 bg-[#111a17] border border-[#233830] rounded-2xl p-5 shadow-xl flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-[#233830] pb-3">
-            <div>
-              <span className="text-[10px] font-mono uppercase tracking-wider text-stone-400">Atmospheric Data</span>
-              <h4 className="text-sm font-bold text-stone-100 flex items-center gap-1.5 mt-0.5">
-                <CloudSun className="w-4 h-4 text-emerald-400" />
-                <span>{location.name} Weather & Barometric Trend</span>
-              </h4>
-            </div>
+      {/* 2. Daylight Movement Curve & Hunting Probability - Right under Deer Movement & Rut Index */}
+      <DaylightMovementCurve
+        location={location}
+        weather={weather}
+        solunar={solunar}
+        rut={rut}
+        huntingScore={huntingScore}
+        onOpenStandPlanner={onOpenStandPlanner}
+      />
 
-            <div className="flex items-center gap-1.5 bg-[#172520] px-2.5 py-1 rounded-lg border border-[#294238] text-xs">
-              {getPressureIcon()}
-              <span className="font-mono font-semibold text-stone-200">
-                {weather.pressure.toFixed(2)} inHg ({weather.pressureTrendText})
-              </span>
-            </div>
+      {/* 3. Atmospheric Data (Weather & Barometric Trend) */}
+      <div className="bg-[#111a17] border border-[#233830] rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-xl flex flex-col justify-between space-y-4">
+        <div className="flex flex-wrap items-center justify-between border-b border-[#233830] pb-3 gap-2">
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-stone-400">Atmospheric Data</span>
+            <h4 className="text-sm sm:text-base font-bold text-stone-100 flex items-center gap-1.5 mt-0.5">
+              <CloudSun className="w-4 h-4 text-emerald-400" />
+              <span>{location.name} Weather & Barometric Trend</span>
+            </h4>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-3">
-            <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#263e34]">
-              <span className="text-[10px] text-stone-400 block">Temperature</span>
-              <span className="text-lg font-bold text-stone-100">{weather.temp}°F</span>
-              <span className="text-[10px] text-stone-400 block">Feels: {weather.feelsLike}°F</span>
-            </div>
-
-            <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#263e34]">
-              <span className="text-[10px] text-stone-400 block">Wind Velocity</span>
-              <span className="text-lg font-bold text-amber-300">{weather.windSpeed} mph</span>
-              <span className="text-[10px] text-stone-400 block">Gusts: {weather.windGusts} mph</span>
-            </div>
-
-            <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#263e34]">
-              <span className="text-[10px] text-stone-400 block">Wind Direction</span>
-              <span className="text-lg font-bold text-stone-100">{weather.windCardinal}</span>
-              <span className="text-[10px] text-stone-400 block">{weather.windDirection}° Bearing</span>
-            </div>
-
-            <div className="bg-[#15231e] p-2.5 rounded-xl border border-[#263e34]">
-              <span className="text-[10px] text-stone-400 block">Humidity & Sky</span>
-              <span className="text-lg font-bold text-stone-100">{weather.humidity}%</span>
-              <span className="text-[10px] text-stone-400 block">{weather.conditionName}</span>
-            </div>
-          </div>
-
-          <div className="bg-[#16231e] p-2.5 rounded-xl border border-[#263e34] flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="text-stone-300">
-              🌅 Sunrise: <strong className="text-amber-200">{weather.sunrise}</strong> • 🌇 Sunset: <strong className="text-amber-200">{weather.sunset}</strong>
+          <div className="flex items-center gap-1.5 bg-[#172520] px-3 py-1.5 rounded-xl border border-[#294238] text-xs">
+            {getPressureIcon()}
+            <span className="font-mono font-semibold text-stone-200">
+              {weather.pressure.toFixed(2)} inHg ({weather.pressureTrendText})
             </span>
-            <button
-              onClick={onOpenStandPlanner}
-              className="px-2.5 py-1.5 bg-amber-700 hover:bg-amber-600 active:bg-amber-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
-            >
-              <Compass className="w-3.5 h-3.5" />
-              <span>Check Stand Wind Cone</span>
-            </button>
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-2">
+          <div className="bg-[#15231e] p-3 rounded-xl border border-[#263e34]">
+            <span className="text-[10px] text-stone-400 block font-mono uppercase">Temperature</span>
+            <span className="text-xl font-bold text-stone-100">{weather.temp}°F</span>
+            <span className="text-[10px] text-stone-400 block mt-0.5">Feels: {weather.feelsLike}°F</span>
+          </div>
+
+          <div className="bg-[#15231e] p-3 rounded-xl border border-[#263e34]">
+            <span className="text-[10px] text-stone-400 block font-mono uppercase">Wind Velocity</span>
+            <span className="text-xl font-bold text-amber-300">{weather.windSpeed} mph</span>
+            <span className="text-[10px] text-stone-400 block mt-0.5">Gusts: {weather.windGusts} mph</span>
+          </div>
+
+          <div className="bg-[#15231e] p-3 rounded-xl border border-[#263e34]">
+            <span className="text-[10px] text-stone-400 block font-mono uppercase">Wind Direction</span>
+            <span className="text-xl font-bold text-stone-100">{weather.windCardinal}</span>
+            <span className="text-[10px] text-stone-400 block mt-0.5">{weather.windDirection}° Bearing</span>
+          </div>
+
+          <div className="bg-[#15231e] p-3 rounded-xl border border-[#263e34]">
+            <span className="text-[10px] text-stone-400 block font-mono uppercase">Humidity & Sky</span>
+            <span className="text-xl font-bold text-stone-100">{weather.humidity}%</span>
+            <span className="text-[10px] text-stone-400 block mt-0.5 truncate">{weather.conditionName}</span>
+          </div>
+        </div>
+
+        <div className="bg-[#16231e] p-3 rounded-xl border border-[#263e34] flex flex-wrap items-center justify-between gap-3 text-xs">
+          <span className="text-stone-300 flex items-center gap-2">
+            <span>🌅 Sunrise: <strong className="text-amber-200">{weather.sunrise}</strong></span>
+            <span>•</span>
+            <span>🌇 Sunset: <strong className="text-amber-200">{weather.sunset}</strong></span>
+          </span>
+          <button
+            onClick={onOpenStandPlanner}
+            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-600 active:bg-amber-800 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-md"
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>Check Stand Wind Cone</span>
+          </button>
         </div>
       </div>
 

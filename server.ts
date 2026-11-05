@@ -68,6 +68,11 @@ app.get('/api/geocode', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+// Favicon route serving prbuck.png
+app.get(['/favicon.ico', '/favicon.png'], (_req: Request, res: Response): void => {
+  res.sendFile(path.resolve(__dirname, 'public/assets/aistudio/prbuck_6f2dde9d.png'));
+});
+
 // Setup Vite middleware in dev or static files in production
 async function startServer() {
   if (!isProduction) {
